@@ -65,7 +65,25 @@ const jsonLd = structuredData ? JSON.stringify(structuredData).replaceAll('<', '
         <a class="site-nav__external" href="https://mizukioyama.github.io/website/" target="_blank" rel="noopener noreferrer">Portfolio <span aria-hidden="true">↗</span></a>
       </nav>
     </header>
-    <main id="main"><slot /></main>
+    <button class="mobile-menu-toggle" type="button" aria-label="メニューを開く" aria-expanded="false" aria-controls="mobile-menu" aria-haspopup="dialog">
+    <span class="mobile-menu-toggle__icon" aria-hidden="true"></span>
+  </button>
+  <dialog class="mobile-menu" id="mobile-menu" aria-label="メインメニュー">
+    <div class="mobile-menu__panel">
+      <div class="mobile-menu__heading">
+        <span class="eyebrow">MENU</span>
+        <button class="mobile-menu__close" type="button" aria-label="メニューを閉じる">×</button>
+      </div>
+      <nav class="mobile-menu__nav" aria-label="モバイルナビゲーション">
+        <a href={base}>Home</a>
+        {categories.map((category) => (
+          <a href={base + 'categories/' + category.slug + '/'}>{category.name}</a>
+        ))}
+        <a class="site-nav__external" href="https://mizukioyama.github.io/website/" target="_blank" rel="noopener noreferrer">Portfolio <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </dialog>
+  <main id="main"><slot /></main>
     <footer class="site-footer">
       <a class="brand brand--footer" href={base}>
         <span class="brand__name">MIZUKI OYAMA</span>
@@ -79,5 +97,61 @@ const jsonLd = structuredData ? JSON.stringify(structuredData).replaceAll('<', '
       {categories.map((category) => <a href={base + 'categories/' + category.slug + '/'}>{category.name}</a>)}
     </nav>
     </footer>
-  </body>
+  <script>
+  const mobileMenu = document.querySelector<HTMLDialogElement>("#mobile-menu");
+  const mobileMenuToggle = document.querySelector<HTMLButtonElement>(".mobile-menu-toggle");
+  const mobileMenuClose = mobileMenu?.querySelector<HTMLButtonElement>(".mobile-menu__close");
+
+  mobileMenuToggle?.addEventListener("click", () => {
+    if (!mobileMenu) return;
+    if (mobileMenu.open) {
+      mobileMenu.close();
+      return;
+    }
+    mobileMenu.showModal();
+    document.documentElement.classList.add("mobile-menu-open");
+    mobileMenuToggle?.setAttribute("aria-expanded", "true");
+    mobileMenuToggle?.setAttribute("aria-label", "メニューを閉じる");
+  });
+
+  mobileMenu?.addEventListener("close", () => {
+    mobileMenuToggle?.setAttribute("aria-expanded", "false");
+    mobileMenuToggle?.setAttribute("aria-label", "メニューを開く");
+    document.documentElement.classList.remove("mobile-menu-open");
+  });
+
+  mobileMenu?.addEventListener("cancel", () => {
+    mobileMenuToggle?.setAttribute("aria-expanded", "false");
+    mobileMenuToggle?.setAttribute("aria-label", "メニューを開く");
+    document.documentElement.classList.remove("mobile-menu-open");
+  });
+  mobileMenu?.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab") return;
+    const focusable = [...mobileMenu.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>("a[href], button:not([disabled])")];
+    if (!focusable.length) return;
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    const focusIsInside = mobileMenu.contains(document.activeElement);
+    if (event.shiftKey && (document.activeElement === first || !focusIsInside)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !focusIsInside)) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  mobileMenu?.addEventListener("click", (event) => {
+    if (event.target === mobileMenu) mobileMenu?.close();
+  });
+
+  mobileMenuClose?.addEventListener("click", () => mobileMenu?.close());
+  mobileMenu?.querySelectorAll("nav a").forEach((link) => {
+    link.addEventListener("click", () => mobileMenu?.close());
+  });
+
+  window.matchMedia("(max-width: 1024px)").addEventListener("change", (event) => {
+    if (!event.matches && mobileMenu?.open) mobileMenu.close();
+  });
+</script>
+</body>
 </html>
