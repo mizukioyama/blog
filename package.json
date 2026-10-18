@@ -4,12 +4,23 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "astro dev --host 0.0.0.0",
-    "start": "astro dev --host 0.0.0.0",
+    "dev": "astro dev --host 127.0.0.1",
+    "start": "astro dev --host 127.0.0.1",
     "check": "astro check && npm run validate:content",
     "validate:content": "node scripts/validate-content.mjs",
     "build": "npm run validate:content && astro build",
-    "preview": "astro preview --host 0.0.0.0"
+    "preview": "astro preview --host 127.0.0.1",
+    "article:new": "node scripts/article-workflow.mjs new",
+    "article:save": "node scripts/article-workflow.mjs save",
+    "article:asset": "node scripts/article-workflow.mjs asset",
+    "article:list": "node scripts/article-workflow.mjs list",
+    "article:validate": "node scripts/article-workflow.mjs validate",
+    "article:status": "node scripts/article-workflow.mjs status",
+    "article:backup": "node scripts/article-workflow.mjs backup",
+    "article:restore": "node scripts/article-workflow.mjs restore",
+    "article:recover": "node scripts/article-workflow.mjs recover",
+    "article:preview": "node scripts/article-workflow.mjs preview",
+    "test:articles": "node --test"
   },
   "dependencies": {
     "astro": "^7.4.0",

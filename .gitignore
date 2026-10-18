@@ -6,5 +6,7 @@ dist/
 .env.*
 !.env.example
 
-# Local-only drafts awaiting owner approval
-.private-drafts/
+# Keep local article drafts out of Git. Only the empty storage marker is tracked.
+.private-drafts/*
+!.private-drafts/.gitkeep
+.private-draft-backups/

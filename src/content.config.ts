@@ -6,6 +6,7 @@ const blog = defineCollection({
   loader: glob({ base: './src/content/blog', pattern: '**/*.md' }),
   schema: ({ image }) => z.object({
     title: z.string().trim().min(1).max(100),
+    seoTitle: z.string().trim().min(1).max(70).optional(),
     slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
     description: z.string().trim().min(40).max(160),
     pubDate: z.coerce.date(),
@@ -26,4 +27,33 @@ const blog = defineCollection({
   }),
 });
 
-export const collections = { blog };
+const localDrafts = defineCollection({
+  loader: glob({ base: './.private-drafts', pattern: '**/index.md' }),
+  schema: ({ image }) => z.object({
+    title: z.string().trim().min(1).max(100),
+    seoTitle: z.string().trim().min(1).max(70).optional(),
+    slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    description: z.string().trim().min(40).max(160),
+    pubDate: z.coerce.date(),
+    updatedDate: z.coerce.date().optional(),
+    category: z.enum(['Art', 'Exhibition', 'Creative']),
+    tags: z.array(z.string()).default([]),
+    draft: z.boolean().default(true),
+    workflowStatus: z.enum(['Draft', 'Review', 'Approved']),
+    cover: image().optional(),
+    coverAlt: z.string().trim().optional(),
+    ogImage: image().optional(),
+    ogImageAlt: z.string().trim().optional(),
+  }).refine((entry) => entry.draft, {
+    message: 'ローカル下書きでは draft: true を指定してください。',
+    path: ['draft'],
+  }).refine((entry) => !entry.cover || Boolean(entry.coverAlt), {
+    message: 'カバー画像を使う場合は、内容を説明する coverAlt も記入してください。',
+    path: ['coverAlt'],
+  }).refine((entry) => !entry.ogImage || Boolean(entry.ogImageAlt), {
+    message: '記事専用OGP画像を使う場合は、内容を説明する ogImageAlt も記入してください。',
+    path: ['ogImageAlt'],
+  }),
+});
+
+export const collections = { blog, localDrafts };

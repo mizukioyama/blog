@@ -1,59 +1,34 @@
-import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import matter from 'gray-matter';
+import { collectArticleFiles, validateArticleFile } from './article-validation.mjs';
 
-const root = fileURLToPath(new URL('../src/content/blog/', import.meta.url));
-const allowedCategories = new Set(['Art', 'Exhibition', 'Creative']);
+const repoRoot = fileURLToPath(new URL('../', import.meta.url));
+const publicRoot = path.join(repoRoot, 'src/content/blog');
+const privateRoot = path.join(repoRoot, '.private-drafts');
 const issues = [];
-const slugs = new Map();
-const files = [];
+const publicFiles = await collectArticleFiles(publicRoot);
+const privateFiles = (await collectArticleFiles(privateRoot)).filter((file) => path.basename(file) === 'index.md');
+const seenSlugs = new Set();
 
-async function walk(directory) {
-  let entries;
-  try { entries = await readdir(directory, { withFileTypes: true }); }
-  catch (error) { if (error.code === 'ENOENT') return; throw error; }
-  for (const entry of entries) {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) await walk(fullPath);
-    else if (entry.isFile() && entry.name.endsWith('.md')) files.push(fullPath);
+for (const file of publicFiles) {
+  const result = await validateArticleFile(file);
+  const relative = path.relative(publicRoot, file);
+  for (const issue of result.issues) issues.push(relative + ': ' + issue);
+  const slug = result.data.slug;
+  if (typeof slug === 'string') {
+    if (seenSlugs.has(slug)) issues.push(relative + ': slug が重複しています (' + slug + ')');
+    seenSlugs.add(slug);
   }
 }
 
-await walk(root);
-let draftCount = 0;
-for (const file of files) {
-  const relative = path.relative(root, file);
-  const source = await readFile(file, 'utf8');
-  let parsed;
-  try { parsed = matter(source); }
-  catch (error) { issues.push(relative + ': frontmatterを読み取れません (' + error.message + ')'); continue; }
-  const { data, content } = parsed;
-  for (const key of ['title', 'slug', 'description', 'pubDate', 'category', 'draft']) {
-    if (data[key] === undefined || data[key] === null || data[key] === '') issues.push(relative + ': ' + key + ' がありません');
-  }
-  if (typeof data.title === 'string' && data.title.trim().length > 100) issues.push(relative + ': title は100文字以内にしてください');
-  if (typeof data.description !== 'string' || data.description.trim().length < 40 || data.description.trim().length > 160) issues.push(relative + ': description は40〜160文字で記入してください');
-  if (typeof data.slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(data.slug)) issues.push(relative + ': slug は小文字英数字とハイフンで記入してください');
-  else if (slugs.has(data.slug)) issues.push(relative + ': slug が ' + slugs.get(data.slug) + ' と重複しています');
-  else slugs.set(data.slug, relative);
-  if (!allowedCategories.has(data.category)) issues.push(relative + ': category は Art / Exhibition / Creative のいずれかにしてください');
-  if (!(data.pubDate instanceof Date) || Number.isNaN(data.pubDate.valueOf())) issues.push(relative + ': pubDate は有効な日付にしてください');
-  if (typeof data.draft !== 'boolean') issues.push(relative + ': draft は true または false を指定してください');
-  if (data.draft === true) draftCount += 1;
-  if (data.cover) {
-    if (typeof data.cover !== 'string') issues.push(relative + ': cover は記事ファイルからの相対パスで指定してください');
-    else {
-      try { await access(path.resolve(path.dirname(file), data.cover)); }
-      catch { issues.push(relative + ': cover の画像ファイルが見つかりません (' + data.cover + ')'); }
-    }
-    if (typeof data.coverAlt !== 'string' || !data.coverAlt.trim()) issues.push(relative + ': cover を使う場合は coverAlt を記入してください');
-  }
-  const plainText = content.replaceAll('#', '').replaceAll('*', '').replaceAll('_', '').trim();
-  if (typeof data.draft === 'boolean' && !data.draft) {
-    if (plainText.length < 250) issues.push(relative + ': 公開記事の本文が短すぎます（250文字以上を目安にしてください）');
-    if (!content.split('\n').some((line) => line.startsWith('## '))) issues.push(relative + ': 公開記事には ## 見出しを1つ以上付けてください');
-    if (content.includes('ここに記入') || content.includes('公開前の下書きサンプル')) issues.push(relative + ': 公開記事にテンプレート用の仮文が残っています');
+const privateStatuses = new Map();
+for (const file of privateFiles) {
+  const relative = path.relative(privateRoot, file);
+  const result = await validateArticleFile(file, { privateDraft: true, knownSlugs: seenSlugs });
+  for (const issue of result.issues) issues.push(relative + ': ' + issue);
+  if (typeof result.data.slug === 'string') seenSlugs.add(result.data.slug);
+  if (result.data.workflowStatus) {
+    privateStatuses.set(result.data.workflowStatus, (privateStatuses.get(result.data.workflowStatus) ?? 0) + 1);
   }
 }
 
@@ -62,6 +37,7 @@ if (issues.length) {
   for (const issue of issues) console.error('- ' + issue);
   process.exitCode = 1;
 } else {
-  console.log('記事検証 OK: ' + files.length + '件を確認しました（下書き ' + draftCount + '件）。');
-  console.log('Astro content schemaは npm run check / npm run build で続けて検証されます。');
+  const statusSummary = [...privateStatuses].map(([status, count]) => status + ' ' + count + '件').join(' / ') || 'なし';
+  console.log('記事検証 OK: 公開ソース ' + publicFiles.length + '件、ローカル下書き ' + privateFiles.length + '件 (' + statusSummary + ')。');
+  console.log('公開記事は本文・見出し・画像を、ローカル下書きは状態に応じた必須項目を確認しました。');
 }

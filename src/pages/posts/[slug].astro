@@ -30,7 +30,7 @@ const articleData = {
   publisher: { '@type': 'Person', name: '小山瑞樹' },
 };
 ---
-<BaseLayout title={post.data.title + '｜Mizuki Oyama Journal'} description={post.data.description} canonical={canonical} ogType="article" publishedTime={isoDate} structuredData={articleData} ogImage={ogImage} ogImageAlt={post.data.ogImageAlt}>
+<BaseLayout title={post.data.seoTitle ?? post.data.title + '｜Mizuki Oyama Journal'} description={post.data.description} canonical={canonical} ogType="article" publishedTime={isoDate} structuredData={articleData} ogImage={ogImage} ogImageAlt={post.data.ogImageAlt}>
   <article class="article page-width">
     <nav class="breadcrumbs" aria-label="パンくずリスト"><a href={base}>記事一覧</a><span aria-hidden="true">/</span><a href={base + 'categories/' + post.data.category.toLowerCase() + '/'}>{post.data.category}</a></nav>
     {post.data.draft && import.meta.env.DEV && <p class="draft-notice">下書きプレビューです。公開ビルドには含まれません。</p>}
