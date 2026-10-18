@@ -184,11 +184,22 @@ a { transition: color .18s ease, background-color .18s ease, border-color .18s e
 a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 2px; }
 
 .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background-color: var(--paper);
   width: min(1100px, calc(100% - clamp(32px, 7vw, 88px)));
   margin-inline: auto;
   padding-block: clamp(18px, 2vw, 26px);
   border-bottom-color: var(--line);
   gap: 24px;
+}
+html { scroll-padding-top: 128px; }
+@media (max-width: 1024px) {
+  html { scroll-padding-top: 112px; }
+}
+@media (max-width: 680px) {
+  html { scroll-padding-top: 88px; }
 }
 .brand__name {
   color: var(--ink);
