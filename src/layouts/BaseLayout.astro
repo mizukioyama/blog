@@ -1,0 +1,83 @@
+---
+import '../styles/global.css';
+import { categories } from '../lib/categories';
+
+interface Props {
+  title: string;
+  description: string;
+  canonical: string;
+  ogType?: 'website' | 'article';
+  publishedTime?: string;
+  structuredData?: Record<string, unknown>; ogImage?: string | undefined; ogImageAlt?: string | undefined;
+}
+
+const { title, description, canonical, ogType = 'website', publishedTime, structuredData, ogImage: pageOgImage, ogImageAlt: pageOgImageAlt } = Astro.props;
+const ogImageAlt = pageOgImageAlt ?? '淡いオリーブ色と青紫色の面にゆらぐ線を重ねた抽象イラスト。';
+const base = import.meta.env.BASE_URL;
+const ogImage = pageOgImage ?? new URL(base + 'og-image.png', Astro.site ?? Astro.url).href;
+const jsonLd = structuredData ? JSON.stringify(structuredData).replaceAll('<', '\u003c') : undefined;
+---
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f4ed" />
+    <meta name="description" content={description} />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href={base + 'favicon.svg'} type="image/svg+xml" />
+    <title>{title}</title>
+    <meta property="og:site_name" content="Mizuki Oyama Journal" />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:locale" content="ja_JP" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+  <meta property="og:image:alt" content={ogImageAlt} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={ogImageAlt} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+  {ogImageAlt && <meta name="twitter:image:alt" content={ogImageAlt} />}
+    {ogType === 'article' && publishedTime && <meta property="article:published_time" content={publishedTime} />}
+    {jsonLd && <script type="application/ld+json" set:html={jsonLd} />}
+  </head>
+  <body>
+    <a class="skip-link" href="#main">本文へ移動</a>
+    <header class="site-header">
+      <a class="brand" href={base} aria-label="Mizuki Oyama Journal ホーム">
+        <span class="brand__name">MIZUKI OYAMA</span>
+        <span class="brand__sub">Journal / 作品と活動の記録</span>
+      </a>
+      <nav class="site-nav" aria-label="メインナビゲーション">
+        <a href={base}>Home</a>
+        {categories.map((category) => (
+          <a href={base + 'categories/' + category.slug + '/'}>{category.name}</a>
+        ))}
+        <a class="site-nav__external" href="https://mizukioyama.github.io/website/" target="_blank" rel="noopener noreferrer">Portfolio <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+    <main id="main"><slot /></main>
+    <footer class="site-footer">
+      <a class="brand brand--footer" href={base}>
+        <span class="brand__name">MIZUKI OYAMA</span>
+        <span class="brand__sub">Art / Exhibition / Creative</span>
+      </a>
+      <p>感じたこと、つくったもの、その間にある時間。</p>
+      <small>© {new Date().getFullYear()} Mizuki Oyama</small>
+    <nav class="site-footer__links" aria-label="関連サイトとカテゴリー">
+      <a href="https://mizukioyama.github.io/website/" target="_blank" rel="noopener noreferrer">Portfolio</a>
+      <a href="https://mizukioyama.github.io/yurayura/" target="_blank" rel="noopener noreferrer">ゆらゆら公式サイト</a>
+      {categories.map((category) => <a href={base + 'categories/' + category.slug + '/'}>{category.name}</a>)}
+    </nav>
+    </footer>
+  </body>
+</html>

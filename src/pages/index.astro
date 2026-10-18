@@ -1,0 +1,123 @@
+---
+import { Image } from 'astro:assets';
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PostCard from '../components/PostCard.astro';
+import { categories } from '../lib/categories';
+
+const allPosts = await getCollection('blog');
+const posts = allPosts
+  .filter((post) => import.meta.env.DEV || !post.data.draft)
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+const featured = posts[0];
+const latestPosts = featured ? posts.filter((post) => post.id !== featured.id).slice(0, 3) : [];
+const base = import.meta.env.BASE_URL;
+const canonical = new URL(base, Astro.site ?? Astro.url).href;
+const description = '抽象画家・小山瑞樹の作品制作、展示企画、WebやAIを使ったものづくりの記録。作品や活動の背景にある思考を綴ります。';
+const formatDate = (date: Date) => new Intl.DateTimeFormat('ja-JP', { dateStyle: 'long', timeZone: 'UTC' }).format(date);
+---
+
+<BaseLayout
+  title="Mizuki Oyama Journal | 小山瑞樹の創作と活動記録"
+  description={description}
+  canonical={canonical}
+  ogImageAlt="淡いオリーブ色と青紫色の面にゆらぐ線を重ねた抽象イラスト。"
+>
+  <div class="home-page">
+    <section class="home-hero page-width" aria-labelledby="home-title">
+      <div class="home-hero__copy">
+        <p class="eyebrow">MIZUKI OYAMA JOURNAL</p>
+        <h1 id="home-title">作品と活動の、<br /><span>背景を記録する。</span></h1>
+        <p class="home-hero__intro">抽象画の制作、展示の企画、WebやAIを使ったものづくり。日々の過程で生まれる思考や気づきを、静かに綴る場所です。</p>
+        <a class="text-link home-hero__link" href="#featured">記事を読む <span aria-hidden="true">↓</span></a>
+      </div>
+      <div class="home-hero__art" aria-hidden="true">
+        <span class="home-hero__shape home-hero__shape--olive"></span>
+        <span class="home-hero__shape home-hero__shape--violet"></span>
+        <svg viewBox="0 0 460 300" fill="none" focusable="false">
+          <path d="M-12 195C62 180 95 219 168 202C233 187 261 142 326 164C386 184 409 215 476 155" />
+          <path d="M-18 218C55 205 102 235 170 220C240 205 270 164 331 184C391 204 421 226 478 174" />
+          <path d="M149 27C190 61 194 99 229 123" />
+        </svg>
+        <span class="home-hero__caption">ART / EXHIBITION / CREATIVE</span>
+      </div>
+    </section>
+
+    <section class="home-section home-featured page-width" id="featured" aria-labelledby="featured-title">
+      <div class="home-section__heading">
+        <div><p class="eyebrow">FEATURED ARTICLE</p><h2 id="featured-title">注目の記事</h2></div>
+        <span class="home-section__index">01</span>
+      </div>
+      {featured ? (
+        <a class="featured-card" href={base + 'posts/' + featured.data.slug + '/'}>
+          <div class="featured-card__visual">
+            {featured.data.cover ? (
+              <Image
+                src={featured.data.cover}
+                alt={featured.data.coverAlt ?? ''}
+                width={featured.data.cover.width}
+                height={featured.data.cover.height}
+                sizes="(max-width: 680px) 100vw, 54vw"
+                loading="eager"
+                class="featured-card__image"
+              />
+            ) : (
+              <div class="featured-card__placeholder" aria-hidden="true"><span>{featured.data.category}</span></div>
+            )}
+            {import.meta.env.DEV && featured.data.draft && <span class="draft-badge">下書き・開発プレビューのみ</span>}
+          </div>
+          <div class="featured-card__body">
+            <p class="featured-card__meta"><span>{featured.data.category}</span><time datetime={featured.data.pubDate.toISOString()}>{formatDate(featured.data.pubDate)}</time></p>
+            <h3>{featured.data.title}</h3>
+            <p class="featured-card__description">{featured.data.description}</p>
+            <span class="text-link">記事を読む <span aria-hidden="true">→</span></span>
+          </div>
+        </a>
+      ) : (
+        <div class="featured-empty">
+          <p>制作や展示の記録を、ここから少しずつ掲載していきます。</p>
+          <span>作品と活動の背景にある思考を綴ります。</span>
+        </div>
+      )}
+    </section>
+
+    <section class="home-section home-latest page-width" aria-labelledby="latest-title">
+      <div class="home-section__heading">
+        <div><p class="eyebrow">LATEST NOTES</p><h2 id="latest-title">新しい記事</h2></div>
+        <span class="home-section__index">{posts.length}件</span>
+      </div>
+      {latestPosts.length > 0 ? (
+        <div class="post-grid">
+          {latestPosts.map((post, index) => <PostCard post={post} preview={import.meta.env.DEV && post.data.draft} loading={index === 0 ? 'eager' : 'lazy'} />)}
+        </div>
+      ) : (
+        <p class="latest-empty">{featured ? '新しい記事は、上の注目記事からご覧いただけます。' : '記事の準備ができ次第、こちらに掲載します。'}</p>
+      )}
+    </section>
+
+    <section class="home-section home-categories page-width" aria-labelledby="category-title">
+      <div class="home-section__heading">
+        <div><p class="eyebrow">CATEGORIES</p><h2 id="category-title">記録のテーマ</h2></div>
+        <span class="home-section__note">作品から、展示へ。<br />ものづくりへ。</span>
+      </div>
+      <div class="category-list">
+        {categories.map((category, index) => (
+          <a class="category-link" href={base + 'categories/' + category.slug + '/'}>
+            <span class="category-link__number">0{index + 1}</span>
+            <span class="category-link__name"><strong>{category.name}</strong><small>{category.label}</small></span>
+            <span class="category-link__description">{category.description}</span>
+            <span class="category-link__arrow" aria-hidden="true">↗</span>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="home-about page-width" aria-labelledby="about-title">
+      <div><p class="eyebrow">ABOUT</p><h2 id="about-title">小山瑞樹について</h2></div>
+      <div class="home-about__body">
+        <p>抽象画家・Webデザイナーとして、作品制作や展示の企画、WebやAIを使ったものづくりに取り組んでいます。このJournalでは、それぞれの活動の背景や過程を記録します。</p>
+        <a class="text-link" href="https://mizukioyama.github.io/website/" target="_blank" rel="noopener noreferrer">Portfolioを見る <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+  </div>
+</BaseLayout>

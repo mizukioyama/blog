@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">第1回グループ展「ゆらゆら」の記事専用OGP</title>
+  <desc id="desc">実際の展示写真ではなく、揺らぎを抽象的な色面と曲線で表した画像。記事タイトルはSNSのタイトル情報に表示します。</desc>
+  <rect width="1200" height="630" fill="#f5f3ec"/>
+  <circle cx="1015" cy="120" r="270" fill="#d9dfd0" opacity=".76"/>
+  <circle cx="1120" cy="525" r="290" fill="#d8d7e4" opacity=".75"/>
+  <circle cx="250" cy="-80" r="210" fill="#e4ddd0" opacity=".46"/>
+  <path d="M-20 450 C180 400 210 470 350 402 S560 340 680 405 S880 490 1030 395 S1170 330 1240 360" fill="none" stroke="#838d69" stroke-width="5" opacity=".75"/>
+  <path d="M-30 492 C125 470 230 520 360 450 S560 385 710 454 S900 510 1050 430 S1170 390 1240 405" fill="none" stroke="#79758f" stroke-width="3" opacity=".7"/>
+  <path d="M80 130 C180 90 285 100 365 160 C425 205 455 270 510 300" fill="none" stroke="#b2a88f" stroke-width="2" opacity=".7"/>
+  <path d="M790 170 C840 130 900 120 950 150 C1000 180 1020 240 1065 270" fill="none" stroke="#838d69" stroke-width="2" opacity=".58"/>
+  <rect x="78" y="74" width="9" height="465" rx="5" fill="#7b8465"/>
+</svg>

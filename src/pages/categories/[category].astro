@@ -1,0 +1,32 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PostCard from '../../components/PostCard.astro';
+import { categories, type BlogCategory } from '../../lib/categories';
+
+export function getStaticPaths() {
+  return categories.map((category) => ({ params: { category: category.slug }, props: { category } }));
+}
+
+interface Props { category: BlogCategory; }
+const { category } = Astro.props;
+const allPosts = await getCollection('blog');
+const posts = allPosts.filter((post) => post.data.category === category.name && (import.meta.env.DEV || !post.data.draft)).sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+const base = import.meta.env.BASE_URL;
+const canonical = new URL(base + 'categories/' + category.slug + '/', Astro.site ?? Astro.url).href;
+---
+<BaseLayout title={category.name + '｜Mizuki Oyama Journal'} description={category.description} canonical={canonical}>
+  <section class="listing-header page-width">
+    <a class="back-link" href={base}>← 記事一覧へ</a>
+    <p class="eyebrow">CATEGORY / {category.name.toUpperCase()}</p>
+    <h1>{category.label}</h1>
+    <p>{category.description}</p>
+  </section>
+  <section class="listing-section page-width" aria-label={category.name + 'の記事'}>
+    {posts.length > 0 ? (
+      <div class="post-grid">{posts.map((post, index) => <PostCard post={post} preview={import.meta.env.DEV && post.data.draft} loading={index === 0 ? 'eager' : 'lazy'} />)}</div>
+    ) : (
+      <p class="empty-state">このカテゴリーの記事はまだありません。公開すると、ここに並びます。</p>
+    )}
+  </section>
+</BaseLayout>
