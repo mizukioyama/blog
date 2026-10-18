@@ -2,12 +2,13 @@
 :root {
   color-scheme: light;
   --paper: #f5f4ed; --paper-deep: #eeede5; --ink: #292b25; --muted: #77786d; --olive: #777967; --line: rgba(55,57,47,.2);
+  --paper-texture: radial-gradient(ellipse at 16% 12%, rgba(255,255,255,.62), transparent 42%), radial-gradient(ellipse at 82% 34%, rgba(226,225,215,.24), transparent 45%);
   --serif: "Yu Mincho", "YuMincho", "Hiragino Mincho ProN", "Noto Serif JP", serif;
   --sans: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; background: var(--paper); }
-body { min-width: 320px; margin: 0; color: var(--ink); background-color: var(--paper); background-image: radial-gradient(ellipse at 16% 12%, rgba(255,255,255,.62), transparent 42%), radial-gradient(ellipse at 82% 34%, rgba(226,225,215,.24), transparent 45%); font-family: var(--serif); font-size: 16px; line-height: 1.9; letter-spacing: .035em; -webkit-font-smoothing: antialiased; }
+body { min-width: 320px; margin: 0; color: var(--ink); background-color: var(--paper); background-image: var(--paper-texture); font-family: var(--serif); font-size: 16px; line-height: 1.9; letter-spacing: .035em; -webkit-font-smoothing: antialiased; }
 img { display: block; max-width: 100%; }
 a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: .28em; }
 a:hover { color: var(--olive); }
@@ -188,6 +189,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-
   top: 0;
   z-index: 5;
   background-color: var(--paper);
+  background-image: var(--paper-texture);
   width: min(1100px, calc(100% - clamp(32px, 7vw, 88px)));
   margin-inline: auto;
   padding-block: clamp(18px, 2vw, 26px);
@@ -662,4 +664,11 @@ html.mobile-menu-open {
     gap: 4px 6px;
     margin-left: 0;
   }
+}
+
+
+/* Full-width sticky header background; content keeps its existing measure. */
+.site-header {
+  width: 100%;
+  padding-inline: max(22px, calc(50% - 660px));
 }
