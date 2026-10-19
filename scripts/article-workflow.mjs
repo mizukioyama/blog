@@ -7,11 +7,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import matter from 'gray-matter';
 import { collectArticleFiles, validateArticleData } from './article-validation.mjs';
+import { isVerifiedApprovedPublicationPair } from './article-publication.mjs';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 const defaultDraftsDir = path.join(repoRoot, '.private-drafts');
 const defaultBackupsDir = path.join(repoRoot, '.private-draft-backups');
 const defaultContentDir = path.join(repoRoot, 'src/content/blog');
+const defaultPlansDir = path.join(repoRoot, '.private-publication');
 const categoryNames = new Set(['Art', 'Exhibition', 'Creative']);
 const validSlug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const statusTransitions = {
@@ -360,9 +362,11 @@ export async function loadDraft({ draftsDir = defaultDraftsDir, slug }) {
   return { draftId: slug, directory, file, source, parsed, data: parsed.data, content: parsed.content };
 }
 
-async function knownSlugs(contentDir, draftsDir, currentFile) {
+async function knownSlugs(contentDir, draftsDir, currentFile, verifiedPublicFile) {
   const slugs = new Set();
-  for (const file of await collectArticleFiles(contentDir)) {
+  const verifiedPublicReal = verifiedPublicFile ? await realpath(verifiedPublicFile) : null;
+  for (const file of (await collectArticleFiles(contentDir)).filter((item) => path.basename(item) === 'index.md')) {
+    if (verifiedPublicReal && await realpath(file) === verifiedPublicReal) continue;
     const parsed = matter(await readFile(file, 'utf8'));
     if (typeof parsed.data.slug === 'string') slugs.add(parsed.data.slug);
   }
@@ -374,10 +378,44 @@ async function knownSlugs(contentDir, draftsDir, currentFile) {
   return slugs;
 }
 
-export async function validateDraft({ draftsDir = defaultDraftsDir, contentDir = defaultContentDir, slug, workflowStatus }) {
+async function verifiedPublicFileForDraft({ draft, draftsDir, contentDir, plansDir }) {
+  if (draft.data.workflowStatus !== 'Approved' || draft.data.draft !== true || typeof draft.data.slug !== 'string') {
+    return null;
+  }
+  const verifiedFiles = [];
+  for (const file of (await collectArticleFiles(contentDir)).filter((item) => path.basename(item) === 'index.md')) {
+    const published = matter(await readFile(file, 'utf8'));
+    if (published.data.slug !== draft.data.slug || published.data.draft !== false) continue;
+    if (await isVerifiedApprovedPublicationPair({
+      draftFile: draft.file,
+      publicFile: file,
+      draftsDir,
+      contentDir,
+      plansDir,
+    })) {
+      verifiedFiles.push(await realpath(file));
+    }
+  }
+  return verifiedFiles.length === 1 ? verifiedFiles[0] : null;
+}
+
+export async function validateDraft({
+  draftsDir = defaultDraftsDir,
+  contentDir = defaultContentDir,
+  plansDir = defaultPlansDir,
+  slug,
+  workflowStatus,
+  allowVerifiedPublicationPair = false,
+}) {
   const draft = await loadDraft({ draftsDir, slug });
-  const known = await knownSlugs(contentDir, draftsDir, draft.file);
   const data = workflowStatus ? { ...draft.data, workflowStatus } : draft.data;
+  const verifiedPublicFile = allowVerifiedPublicationPair &&
+    draft.data.workflowStatus === 'Approved' &&
+    draft.data.draft === true &&
+    data.workflowStatus === 'Approved'
+    ? await verifiedPublicFileForDraft({ draft, draftsDir, contentDir, plansDir })
+    : null;
+  const known = await knownSlugs(contentDir, draftsDir, draft.file, verifiedPublicFile);
   const issues = await validateArticleData({
     data,
     content: draft.content,
@@ -617,6 +655,7 @@ export async function runCommand(args = process.argv.slice(2)) {
   const [command, ...rest] = args;
   const draftsDir = process.env.ARTICLE_DRAFTS_DIR ?? defaultDraftsDir;
   const contentDir = process.env.ARTICLE_CONTENT_DIR ?? defaultContentDir;
+  const plansDir = process.env.ARTICLE_PUBLICATION_DIR ?? defaultPlansDir;
   if (!command || command === '--help' || command === '-h') return printHelp();
 
   if (command === 'new') {
@@ -682,7 +721,7 @@ export async function runCommand(args = process.argv.slice(2)) {
   if (command === 'validate') {
     const [slug] = rest;
     if (!slug) throw new Error('検証するslugを指定してください。');
-    const result = await validateDraft({ draftsDir, contentDir, slug });
+    const result = await validateDraft({ draftsDir, contentDir, plansDir, slug, allowVerifiedPublicationPair: true });
     if (result.issues.length) throw new Error('下書きに問題があります:\n- ' + result.issues.join('\n- '));
     console.log('下書き検証 OK: ' + slug + ' (' + result.data.workflowStatus + ')');
     return;

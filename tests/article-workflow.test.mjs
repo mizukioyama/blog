@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import matter from 'gray-matter';
 import { validateArticleData } from '../scripts/article-validation.mjs';
+import { materializePublication, preparePublication } from '../scripts/article-publication.mjs';
 import {
   backupDraft,
   createDraft,
@@ -24,9 +25,16 @@ async function withWorkspace(callback) {
   const draftsDir = path.join(root, '.private-drafts');
   const backupsDir = path.join(root, '.private-draft-backups');
   const contentDir = path.join(root, 'src/content/blog');
-  await mkdir(contentDir, { recursive: true });
+  const plansDir = path.join(root, '.private-publication');
+  const publicDir = path.join(root, 'public');
+  await Promise.all([
+    mkdir(contentDir, { recursive: true }),
+    mkdir(plansDir, { recursive: true }),
+    mkdir(publicDir, { recursive: true }),
+  ]);
+  await writeFile(path.join(publicDir, 'og-image.png'), Buffer.from('isolated site OGP fixture'));
   try {
-    await callback({ root, draftsDir, backupsDir, contentDir });
+    await callback({ root, draftsDir, backupsDir, contentDir, plansDir, publicDir });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -51,10 +59,15 @@ function articlePayload(overrides = {}) {
   };
 }
 
-function runWorkflowCli(args, { draftsDir, contentDir }, input) {
+function runWorkflowCli(args, { draftsDir, contentDir, plansDir }, input) {
   return spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/article-workflow.mjs', import.meta.url)), ...args], {
     cwd: path.dirname(draftsDir),
-    env: { ...process.env, ARTICLE_DRAFTS_DIR: draftsDir, ARTICLE_CONTENT_DIR: contentDir },
+    env: {
+      ...process.env,
+      ARTICLE_DRAFTS_DIR: draftsDir,
+      ARTICLE_CONTENT_DIR: contentDir,
+      ARTICLE_PUBLICATION_DIR: plansDir,
+    },
     input,
     encoding: 'utf8',
   });
@@ -349,4 +362,247 @@ test('validates public cover and OGP images as contained regular files', async (
     });
     assert.ok(directoryIssues.some((issue) => issue.startsWith('cover は') && issue.includes('通常ファイル')));
   });
+});
+
+
+async function createApprovedPublishedPair(context, slug = 'approved-published-fixture') {
+  const created = await createDraft({
+    draftsDir: context.draftsDir,
+    topic: '隔離された公開候補の検証',
+    category: 'Creative',
+    now: new Date('2026-10-19T12:00:00.000Z'),
+  });
+  const assets = {
+    'cover.png': Buffer.from('fixture cover image bytes'),
+    'og.png': Buffer.from('fixture OGP image bytes'),
+    'body.png': Buffer.from('fixture body image bytes'),
+  };
+  await Promise.all(Object.entries(assets).map(([name, bytes]) => writeFile(path.join(created.directory, name), bytes)));
+  const payload = articlePayload({
+    data: {
+      title: '架空の承認済み公開記事 ' + slug,
+      seoTitle: '架空の承認済み公開記事 ' + slug,
+      slug,
+      cover: './cover.png',
+      coverAlt: '隔離テスト用アイキャッチ。',
+      ogImage: './og.png',
+      ogImageAlt: '隔離テスト用OGP画像。',
+    },
+    content: articlePayload().content + '\n![隔離テスト用本文画像](./body.png)\n',
+  });
+  await saveDraftArticle({ draftsDir: context.draftsDir, contentDir: context.contentDir, draftId: created.draftId, ...payload });
+  await updateDraftStatus({ draftsDir: context.draftsDir, contentDir: context.contentDir, slug: created.draftId, workflowStatus: 'Review' });
+
+  const plan = await preparePublication({
+    draftsDir: context.draftsDir,
+    contentDir: context.contentDir,
+    plansDir: context.plansDir,
+    backupsDir: context.backupsDir,
+    publicOgImage: path.join(context.publicDir, 'og-image.png'),
+    draftId: created.draftId,
+    now: new Date('2026-10-19T12:30:00.000Z'),
+  });
+  await updateDraftStatus({
+    draftsDir: context.draftsDir,
+    contentDir: context.contentDir,
+    slug: created.draftId,
+    workflowStatus: 'Approved',
+    confirmedByUser: true,
+  });
+  await materializePublication({
+    draftsDir: context.draftsDir,
+    contentDir: context.contentDir,
+    plansDir: context.plansDir,
+    planId: plan.planId,
+    candidateSha256: plan.candidateSha256,
+  });
+
+  const planDirectory = path.join(context.plansDir, plan.planId);
+  const manifest = JSON.parse(await readFile(path.join(planDirectory, 'plan.json'), 'utf8'));
+  const candidate = manifest.candidate;
+  const coverPath = candidate.cover.replace(/^\.\//, '');
+  const coverRecord = candidate.files.find((file) => file.path === coverPath);
+  await writeFile(path.join(planDirectory, 'content-seo-approval.json'), JSON.stringify({
+    schemaVersion: 1,
+    article: {
+      title: candidate.title,
+      draftId: created.draftId,
+      slug: candidate.slug,
+      candidateId: plan.planId,
+      candidateSha256: candidate.candidateSha256,
+    },
+    partialApproval: {
+      status: 'USER_APPROVED',
+      approved: ['current article body', 'SEO title', 'Meta Description'],
+      boundToCandidateSha256: candidate.candidateSha256,
+    },
+  }, null, 2) + '\n');
+  await writeFile(path.join(planDirectory, 'content-approval-transition.json'), JSON.stringify({
+    schemaVersion: 1,
+    recordType: 'article-content-approval-and-status-transition',
+    article: { title: candidate.title, category: candidate.category, draftId: created.draftId, slug: candidate.slug },
+    candidate: {
+      id: plan.planId,
+      sha256: candidate.candidateSha256,
+      publicUrl: candidate.publicUrl,
+      targetFiles: candidate.targetFiles,
+      publishDate: candidate.publishDate,
+      coverSha256: coverRecord.sha256,
+    },
+    approvals: {
+      body: 'APPROVED',
+      seoTitle: 'APPROVED',
+      metaDescription: 'APPROVED',
+      coverImage: 'APPROVED',
+      publicationDate: 'APPROVED',
+    },
+    workflowTransition: { from: 'Review', to: 'Approved' },
+  }, null, 2) + '\n');
+
+  const publicDirectory = path.join(context.contentDir, ...candidate.targetDirectory.split('/'));
+  return {
+    ...created,
+    payload,
+    slug,
+    planId: plan.planId,
+    candidateSha256: plan.candidateSha256,
+    planDirectory,
+    publicDirectory,
+    publicIndex: path.join(publicDirectory, 'index.md'),
+    publicCover: path.join(publicDirectory, 'cover.png'),
+  };
+}
+
+async function updateFixtureFrontmatter(file, update) {
+  const parsed = matter(await readFile(file, 'utf8'));
+  await writeFile(file, matter.stringify(parsed.content, update(parsed.data)));
+}
+
+function hasSlugCollision(result) {
+  return result.issues.some((issue) => issue.includes('slug が既存記事または別の下書きと重複しています'));
+}
+
+test('article:validate permits an exactly verified Approved publication pair while save and status checks stay strict', async () => {
+  await withWorkspace(async (context) => {
+    const fixture = await createApprovedPublishedPair(context);
+    const options = {
+      draftsDir: context.draftsDir,
+      contentDir: context.contentDir,
+      plansDir: context.plansDir,
+      slug: fixture.draftId,
+    };
+
+    const verified = await validateDraft({ ...options, allowVerifiedPublicationPair: true });
+    assert.equal(verified.data.workflowStatus, 'Approved');
+    assert.deepEqual(verified.issues, []);
+
+    const strict = await validateDraft(options);
+    assert.ok(hasSlugCollision(strict));
+
+    const cli = runWorkflowCli(['validate', fixture.draftId], context);
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.match(cli.stdout, /下書き検証 OK/);
+
+    await assert.rejects(
+      updateDraftStatus({ ...options, workflowStatus: 'Review' }),
+      /検証に失敗しました:[\s\S]*slug が既存記事/,
+    );
+    assert.equal((await loadDraft({ draftsDir: context.draftsDir, slug: fixture.draftId })).data.workflowStatus, 'Approved');
+
+    const another = await createDraft({ draftsDir: context.draftsDir, topic: '保存重複の隔離テスト' });
+    await assert.rejects(
+      saveDraftArticle({
+        draftsDir: context.draftsDir,
+        contentDir: context.contentDir,
+        draftId: another.draftId,
+        ...articlePayload({ data: { slug: fixture.slug } }),
+      }),
+      /保存前検証に失敗しました:[\s\S]*slug が既存記事/,
+    );
+  });
+});
+
+test('article:validate fails closed when the Approved draft and published article are not the same verified candidate', async (t) => {
+  const cases = [
+    ['Draft status collides with published article', async (context, fixture) => {
+      await updateFixtureFrontmatter(fixture.articlePath, (data) => ({ ...data, workflowStatus: 'Draft' }));
+    }],
+    ['Review status collides with published article', async (context, fixture) => {
+      await updateFixtureFrontmatter(fixture.articlePath, (data) => ({ ...data, workflowStatus: 'Review' }));
+    }],
+    ['a second draft with the same slug remains a collision', async (context, fixture) => {
+      const other = await createDraft({ draftsDir: context.draftsDir, topic: '重複Slugの隔離テスト' });
+      await updateFixtureFrontmatter(other.articlePath, (data) => ({ ...data, slug: fixture.slug }));
+    }],
+    ['a second published article with the same slug remains a collision', async (context, fixture) => {
+      const directory = path.join(context.contentDir, 'art', 'same-slug');
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, 'index.md'), matter.stringify('別記事の隔離データです。', {
+        title: '別の架空記事',
+        slug: fixture.slug,
+        draft: false,
+        category: 'Art',
+      }));
+    }],
+    ['missing candidate is rejected', async (context, fixture) => {
+      await rm(fixture.planDirectory, { recursive: true });
+    }],
+    ['missing approval record is rejected', async (context, fixture) => {
+      await rm(path.join(fixture.planDirectory, 'content-seo-approval.json'));
+    }],
+    ['mismatched approval candidate ID is rejected', async (context, fixture) => {
+      const file = path.join(fixture.planDirectory, 'content-seo-approval.json');
+      const record = JSON.parse(await readFile(file, 'utf8'));
+      record.article.candidateId = 'tampered-candidate-id';
+      await writeFile(file, JSON.stringify(record));
+    }],
+    ['mismatched transition candidate ID is rejected', async (context, fixture) => {
+      const file = path.join(fixture.planDirectory, 'content-approval-transition.json');
+      const record = JSON.parse(await readFile(file, 'utf8'));
+      record.candidate.id = 'tampered-candidate-id';
+      await writeFile(file, JSON.stringify(record));
+    }],
+    ['mismatched candidate SHA-256 is rejected', async (context, fixture) => {
+      const file = path.join(fixture.planDirectory, 'content-approval-transition.json');
+      const record = JSON.parse(await readFile(file, 'utf8'));
+      record.candidate.sha256 = '0'.repeat(64);
+      await writeFile(file, JSON.stringify(record));
+    }],
+    ['changed approved body is rejected', async (context, fixture) => {
+      const parsed = matter(await readFile(fixture.articlePath, 'utf8'));
+      await writeFile(fixture.articlePath, matter.stringify(parsed.content + '\n追記された改変 fixture。\n', parsed.data));
+    }],
+    ['changed brief is rejected', async (context, fixture) => {
+      await writeFile(fixture.briefPath, '改変されたbrief fixture\n');
+    }],
+    ['changed source image is rejected', async (context, fixture) => {
+      await writeFile(path.join(fixture.directory, 'cover.png'), Buffer.from('changed source image bytes'));
+    }],
+    ['changed public file is rejected', async (context, fixture) => {
+      await writeFile(fixture.publicCover, Buffer.from('changed public image bytes'));
+    }],
+    ['tampered candidate manifest is rejected', async (context, fixture) => {
+      const file = path.join(fixture.planDirectory, 'plan.json');
+      const manifest = JSON.parse(await readFile(file, 'utf8'));
+      manifest.candidate.title = '改変された候補タイトル';
+      await writeFile(file, JSON.stringify(manifest));
+    }],
+  ];
+
+  for (const [name, mutate] of cases) {
+    await t.test(name, async () => {
+      await withWorkspace(async (context) => {
+        const fixture = await createApprovedPublishedPair(context, 'approved-published-fixture');
+        await mutate(context, fixture);
+        const result = await validateDraft({
+          draftsDir: context.draftsDir,
+          contentDir: context.contentDir,
+          plansDir: context.plansDir,
+          slug: fixture.draftId,
+          allowVerifiedPublicationPair: true,
+        });
+        assert.ok(hasSlugCollision(result), result.issues.join('\n'));
+      });
+    });
+  }
 });
