@@ -98,33 +98,126 @@ const jsonLd = structuredData ? JSON.stringify(structuredData).replaceAll('<', '
   const mobileMenu = document.querySelector<HTMLDialogElement>("#mobile-menu");
   const mobileMenuToggle = document.querySelector<HTMLButtonElement>(".mobile-menu-toggle");
   const mobileMenuClose = mobileMenu?.querySelector<HTMLButtonElement>(".mobile-menu__close");
+  const mobileMenuPanel = mobileMenu?.querySelector<HTMLElement>(".mobile-menu__panel");
+  const mobileBreakpoint = window.matchMedia("(max-width: 1024px)");
+  const toggleOrigin = mobileMenuToggle ? document.createComment("mobile-menu-toggle-origin") : null;
+  if (mobileMenuToggle?.parentNode && toggleOrigin) mobileMenuToggle.parentNode.insertBefore(toggleOrigin, mobileMenuToggle);
 
-  mobileMenuToggle?.addEventListener("click", () => {
-    if (!mobileMenu) return;
-    if (mobileMenu.open) {
+  let closeTimeout = 0;
+  let closeTransitionEnd: ((event: TransitionEvent) => void) | null = null;
+  let focusAfterClose: HTMLElement | null = mobileMenuToggle;
+
+  const setExpanded = (expanded: boolean) => {
+    mobileMenuToggle?.setAttribute("aria-expanded", String(expanded));
+    mobileMenuToggle?.setAttribute("aria-label", expanded ? "メニューを閉じる" : "メニューを開く");
+  };
+
+  const parseCssTime = (value: string) => {
+    const time = Number.parseFloat(value);
+    if (!Number.isFinite(time)) return 0;
+    return value.trim().endsWith("ms") ? time : value.trim().endsWith("s") ? time * 1000 : 0;
+  };
+
+  const transitionDuration = (element: Element) => {
+    const style = window.getComputedStyle(element);
+    const durations = style.transitionDuration.split(",").map(parseCssTime);
+    const delays = style.transitionDelay.split(",").map(parseCssTime);
+    return Math.max(0, ...durations.map((duration, index) => duration + delays[index % delays.length]!));
+  };
+
+  const clearPendingClose = () => {
+    if (closeTimeout) window.clearTimeout(closeTimeout);
+    closeTimeout = 0;
+    if (closeTransitionEnd && mobileMenuPanel) mobileMenuPanel.removeEventListener("transitionend", closeTransitionEnd);
+    closeTransitionEnd = null;
+  };
+
+  const moveToggleIntoDialog = () => {
+    if (mobileMenu && mobileMenuToggle && !mobileMenu.contains(mobileMenuToggle)) mobileMenu.append(mobileMenuToggle);
+  };
+
+  const restoreToggle = () => {
+    if (mobileMenu && mobileMenuToggle && toggleOrigin && toggleOrigin.parentNode && mobileMenu.contains(mobileMenuToggle)) {
+      toggleOrigin.parentNode.insertBefore(mobileMenuToggle, toggleOrigin.nextSibling);
+    }
+  };
+
+  const resumeMenu = () => {
+    if (!mobileMenu?.open) return;
+    clearPendingClose();
+    focusAfterClose = mobileMenuToggle;
+    mobileMenu.dataset.state = "open";
+    mobileMenuClose?.focus();
+  };
+
+  const closeMenu = (focusTarget: HTMLElement | null = mobileMenuToggle) => {
+    if (!mobileMenu?.open || mobileMenu.dataset.state === "closing") return;
+    clearPendingClose();
+    focusAfterClose = focusTarget;
+    mobileMenu.dataset.state = "closing";
+    const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches || !mobileMenuPanel
+      ? 0
+      : transitionDuration(mobileMenuPanel);
+    if (duration <= 0) {
       mobileMenu.close();
       return;
     }
+    closeTransitionEnd = (event: TransitionEvent) => {
+      if (event.target === mobileMenuPanel && event.propertyName === "opacity") mobileMenu.close();
+    };
+    mobileMenuPanel?.addEventListener("transitionend", closeTransitionEnd);
+    closeTimeout = window.setTimeout(() => {
+      if (mobileMenu.open && mobileMenu.dataset.state === "closing") mobileMenu.close();
+    }, duration + 80);
+  };
+
+  const openMenu = () => {
+    if (!mobileMenu) return;
+    if (mobileMenu.open) {
+      if (mobileMenu.dataset.state === "closing") resumeMenu();
+      return;
+    }
+    clearPendingClose();
+    focusAfterClose = mobileMenuToggle;
+    mobileMenu.dataset.state = "opening";
+    moveToggleIntoDialog();
     mobileMenu.showModal();
     document.documentElement.classList.add("mobile-menu-open");
-    mobileMenuToggle?.setAttribute("aria-expanded", "true");
-    mobileMenuToggle?.setAttribute("aria-label", "メニューを閉じる");
+    setExpanded(true);
+    window.requestAnimationFrame(() => {
+      if (!mobileMenu.open || mobileMenu.dataset.state !== "opening") return;
+      mobileMenu.dataset.state = "open";
+      mobileMenuClose?.focus();
+    });
+  };
+
+  mobileMenuToggle?.addEventListener("click", () => {
+    if (!mobileMenu?.open) openMenu();
+    else if (mobileMenu.dataset.state === "closing") resumeMenu();
+    else closeMenu();
   });
 
   mobileMenu?.addEventListener("close", () => {
-    mobileMenuToggle?.setAttribute("aria-expanded", "false");
-    mobileMenuToggle?.setAttribute("aria-label", "メニューを開く");
+    clearPendingClose();
+    restoreToggle();
+    delete mobileMenu.dataset.state;
     document.documentElement.classList.remove("mobile-menu-open");
+    setExpanded(false);
+    const target = focusAfterClose;
+    focusAfterClose = mobileMenuToggle;
+    if (target?.isConnected) target.focus();
   });
 
-  mobileMenu?.addEventListener("cancel", () => {
-    mobileMenuToggle?.setAttribute("aria-expanded", "false");
-    mobileMenuToggle?.setAttribute("aria-label", "メニューを開く");
-    document.documentElement.classList.remove("mobile-menu-open");
+  mobileMenu?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    if (mobileMenu.dataset.state === "closing") resumeMenu();
+    else closeMenu();
   });
+
   mobileMenu?.addEventListener("keydown", (event) => {
     if (event.key !== "Tab") return;
-    const focusable = [...mobileMenu.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>("a[href], button:not([disabled])")];
+    const focusable = [...mobileMenu.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>("a[href], button:not([disabled])")]
+      .filter((element) => element.getClientRects().length > 0);
     if (!focusable.length) return;
     const first = focusable[0]!;
     const last = focusable[focusable.length - 1]!;
@@ -137,18 +230,25 @@ const jsonLd = structuredData ? JSON.stringify(structuredData).replaceAll('<', '
       first.focus();
     }
   });
+
   mobileMenu?.addEventListener("click", (event) => {
-    if (event.target === mobileMenu) mobileMenu?.close();
+    if (event.target === mobileMenu) closeMenu();
   });
 
-  mobileMenuClose?.addEventListener("click", () => mobileMenu?.close());
-  mobileMenu?.querySelectorAll("nav a").forEach((link) => {
-    link.addEventListener("click", () => mobileMenu?.close());
+  mobileMenuClose?.addEventListener("click", () => {
+    if (mobileMenu?.dataset.state === "closing") resumeMenu();
+    else closeMenu();
   });
 
-  window.matchMedia("(max-width: 1024px)").addEventListener("change", (event) => {
-    if (!event.matches && mobileMenu?.open) mobileMenu.close();
+  mobileMenu?.querySelectorAll<HTMLAnchorElement>("nav a").forEach((link) => {
+    link.addEventListener("click", () => closeMenu(null));
   });
-</script>
+
+  mobileBreakpoint.addEventListener("change", (event) => {
+    if (!event.matches && mobileMenu?.open) {
+      closeMenu(document.querySelector<HTMLAnchorElement>(".site-nav a"));
+    }
+  });
+  </script>
 </body>
 </html>
