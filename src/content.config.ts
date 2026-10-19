@@ -86,7 +86,7 @@ const localDrafts = defineCollection({
   loader: loadLocalDrafts
     ? glob({ base: './.private-drafts', pattern: '**/index.md' })
     : async () => [],
-  schema: ({ image }) => z.object({
+  schema: z.object({
     title: z.string().trim().min(1).max(100),
     seoTitle: z.string().trim().min(1).max(70).optional(),
     slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
@@ -97,9 +97,9 @@ const localDrafts = defineCollection({
     tags: z.array(z.string()).default([]),
     draft: z.boolean().default(true),
     workflowStatus: z.enum(['Draft', 'Review', 'Approved']),
-    cover: image().optional(),
+    cover: z.string().trim().min(1).optional(),
     coverAlt: z.string().trim().optional(),
-    ogImage: image().optional(),
+    ogImage: z.string().trim().min(1).optional(),
     ogImageAlt: z.string().trim().optional(),
   }).refine((entry) => entry.draft, {
     message: 'ローカル下書きでは draft: true を指定してください。',
