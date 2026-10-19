@@ -20,6 +20,9 @@
     "article:restore": "node scripts/article-workflow.mjs restore",
     "article:recover": "node scripts/article-workflow.mjs recover",
     "article:preview": "node scripts/article-workflow.mjs preview",
+    "article:publish:prepare": "node scripts/article-publication.mjs prepare",
+    "article:publish:materialize": "node scripts/article-publication.mjs materialize",
+    "article:publish:verify": "node scripts/article-publication.mjs verify",
     "test:articles": "node --test"
   },
   "dependencies": {

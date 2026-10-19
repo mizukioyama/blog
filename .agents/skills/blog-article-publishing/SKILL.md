@@ -10,7 +10,7 @@ description: Use when the user asks to write, plan, revise, or locally preview a
 ## Scope and safety
 
 - Work only in the blog repository. Before writing, verify that git rev-parse --show-toplevel identifies the checkout and git remote get-url origin equals https://github.com/mizukioyama/blog.git. If the repository identity or local access cannot be confirmed, stop and request local access; do not substitute a mirror, another blog, yurayura, yurayura-line-os, or website.
-- Preserve all pre-existing tracked and untracked changes. Read `git status --short` first. Do not edit `src/content/blog`, stage, commit, push, run GitHub Actions, or publish. Keep the article in `.private-drafts/<draft-id>/` with `draft: true`.
+- Preserve all pre-existing tracked and untracked changes. Read `git status --short` first. During article creation and review, keep the article in `.private-drafts/<draft-id>/` with `draft: true` and do not edit `src/content/blog` or perform GitHub operations. The only publication path is the explicit Phase 2B workflow below.
 - The user’s theme and supplied notes are enough to begin. Ask a follow-up only when a missing personal experience or material fact cannot be safely left as an open question.
 - Never change a draft to `Approved` before the user has reviewed it and explicitly approved its content. `Approved` is separate from GitHub or publication approval.
 
@@ -34,9 +34,22 @@ description: Use when the user asks to write, plan, revise, or locally preview a
 8. Run `npm run article:preview -- <draft-id>`. It binds only to `127.0.0.1`; keep the server running for the user and report the exact URL it prints. Inspect the preview in a browser when available: title, body, cover, category, SEO/OGP tags, sticky header, mobile menu, Footer, and responsive layout. If browser control is unavailable, report that clearly and provide the local URL.
 9. Report the draft ID, category, SEO fields, fact gaps, image-generation result or fallback spec, validation result, preview URL, and files saved. Stop at `Review` and wait for the user’s review.
 
-## Revisions, backups, and approval
+## Revisions and content approval
 
 - Before revising an existing draft, create a local snapshot: `npm run article:backup -- <draft-id>`. Keep and report the returned backup ID. Move a `Review` draft back to `Draft` before saving revisions. The save operation atomically replaces each validated file and does not change public content.
 - To restore, use `npm run article:restore -- <backup-id> [new-draft-id]`. Restore refuses to overwrite an existing folder. Run article validation after recovery.
 - Backups remain local in the ignored `.private-draft-backups/` directory. Do not upload drafts or backups to any external service. If the user has Time Machine or an encrypted external disk configured, recommend including the local backup folder there; do not alter backup settings.
-- Only after an explicit user message approving the article content may you run `npm run article:status -- <draft-id> Approved --user-confirmed`. This records content approval only. Do not stage, commit, push, deploy, or publish as part of this skill.
+- Only after an explicit user message approving the article content may you run `npm run article:status -- <draft-id> Approved --user-confirmed`. This records content approval only. It is separate from permission to place files, stage, commit, push, run Actions, or publish.
+
+
+## Phase 2B｜承認付き公開フロー
+
+The complete operational runbook is [docs/ARTICLE_PUBLICATION_WORKFLOW.md](../../../docs/ARTICLE_PUBLICATION_WORKFLOW.md). Apply it together with this Skill; it does not weaken any safety gate above.
+
+1. After an article reaches `Review`, run `npm run article:publish:prepare -- <draft-id>`. This validates required metadata and assets, duplicate slugs/titles, local blog routes, path safety, and obvious private-path/secret markers. It writes only a hash-bound candidate under ignored `.private-publication/`; it does not edit the public content collection or the source draft. A missing SEO title, cover, brief, unsafe link/image, unresolved brief marker, or validation error blocks the candidate.
+2. Show the user the exact title, full article, image, SEO/OGP/Twitter details, planned date, URL, file allowlist, candidate SHA-256, and unresolved/manual checks. Ask for the local preview to be reviewed when available. Semantic overlap, facts, rights, tone, links, and image meaning still require editorial review.
+3. Treat content approval and GitHub publication approval as two distinct permissions. The user must explicitly approve the exact candidate content and, separately, its GitHub Pages publication. An `Approved` state, `--user-confirmed`, or `--candidate-sha` alone is never proof of either conversation approval. If the user approves only the content, keep it private and do not materialize or perform Git/GitHub operations.
+4. Only after both approvals, record `Approved`, run the materialization dry-run with the exact candidate SHA, inspect its exact file list, then materialize that same candidate. This creates new public source files without moving or deleting the private draft, images, brief, or backup. A changed draft, mismatched hash, duplicate slug, or occupied destination must stop without overwriting.
+5. Run the article tests, Astro check, production build, and diff check. Stage only the files from the candidate allowlist, review the staged names and diff, create one article commit, and push `main` without force only when the user’s publication approval explicitly covers those actions and the branch is clean and synchronized.
+6. `.github/workflows/deploy.yml` is manual `workflow_dispatch`; a push does not deploy. Check whether the same SHA already has a run, dispatch the existing workflow once if needed, and verify build/deploy success plus SHA equality. Then run `npm run article:publish:verify` with the confirmed run details. Preserve all work on failure; never reset, clean, or delete the candidate or draft.
+7. Record verified publication metadata privately in the plan directory. Use real available metrics only for the 12h/24h follow-up; browser layout and console checks must be performed separately and marked `NOT_TESTED` when unavailable.

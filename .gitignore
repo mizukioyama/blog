@@ -10,3 +10,4 @@ dist/
 .private-drafts/*
 !.private-drafts/.gitkeep
 .private-draft-backups/
+.private-publication/

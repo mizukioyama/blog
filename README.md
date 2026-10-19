@@ -50,6 +50,13 @@ Reviewに進めるには、記事本文250文字以上、見出し、未置換�
 
 `npm run article:backup -- <draft-id>` は下書きフォルダーをローカルの `.private-draft-backups/` に、上書きしない名前で複製します。`npm run article:restore -- <backup-id> [new-draft-id]` は既存フォルダーがある場合に復元を拒否します。下書き・バックアップはGit管理対象外で外部アップロードしません。ローカル複製だけでは端末故障に備えられないため、利用中ならTime Machineまたは暗号化した外部ディスクでブログフォルダーをバックアップしてください。バックアップ設定は自動変更しません。 2ファイル保存中にプロセスが中断し、下書き内に .article-save-recovery-<id>/ が残った場合は削除せず、npm run article:recover -- <draft-id> を実行してください。未完了の保存は保存前の index.md と brief.md に戻します。復旧に失敗した場合は回復フォルダー内の同名ファイルを保全し、表示された原因を確認してから同じコマンドを再実行してください。
 
+
+## Phase 2B｜承認付き記事公開
+
+`npm run article:publish:prepare -- <draft-id>` はReview下書きから、非公開の公開候補・候補SHA・公開予定URL・正確な配置ファイル一覧を作ります。記事本文や画像は公開フォルダーへ移さず、レビュー中は既存のlocalhostプレビューを使います。
+
+記事内容の承認とGitHub Pagesへの公開承認は別々に会話で確認します。`Approved`、`--user-confirmed`、候補SHAは本人承認の代わりになりません。両方の明示承認後、`npm run article:publish:materialize -- <plan-id> --candidate-sha <sha256> --dry-run` で配置を確認し、承認済みの同じ候補だけをローカルの公開コンテンツへ準備します。Git操作・Actions実行・公開後検証は [`docs/ARTICLE_PUBLICATION_WORKFLOW.md`](docs/ARTICLE_PUBLICATION_WORKFLOW.md) に従います。
+
 ## 公開記事の仕様
 
 公開記事は `src/content/blog/<category>/<slug>/index.md` に保存し、slugは小文字英数字とハイフンで一意にします。frontmatterにはタイトル、SEOタイトル（任意、70文字以内）、40〜160文字のdescription、日付、カテゴリー、タグ、`draft: false` を設定します。カバー画像・記事専用OGP画像には説明的な代替テキストを添えます。`npm run check` と `npm run build` は公開記事の本文・見出し・画像を検証し、ローカル下書きも状態に応じて検証します。ローカル下書きコレクションは公開記事一覧・カテゴリー・サイトマップから分離され、Production buildでは `/draft-preview/` のページを生成しません。
