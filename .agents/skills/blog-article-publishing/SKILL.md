@@ -5,6 +5,8 @@ description: Use when the user asks to write, plan, revise, or locally preview a
 
 # 独自ブログ記事制作
 
+記事の企画・文章品質・アイキャッチの編集基準は [docs/ARTICLE_WRITING_RULES.md](../../../docs/ARTICLE_WRITING_RULES.md) を正本として参照してください。このSkillはブログ固有の実行手順と安全ゲートを定めます。
+
 ## Scope and safety
 
 - Work only in the blog repository. Before writing, verify that git rev-parse --show-toplevel identifies the checkout and git remote get-url origin equals https://github.com/mizukioyama/blog.git. If the repository identity or local access cannot be confirmed, stop and request local access; do not substitute a mirror, another blog, yurayura, yurayura-line-os, or website.
@@ -14,15 +16,15 @@ description: Use when the user asks to write, plan, revise, or locally preview a
 
 ## Create the article
 
-1. Read the existing published article `src/content/blog/exhibition/yurayura-first-group-exhibition-report/index.md` for voice and structure. Do not copy its sentences. Select `Art`, `Exhibition`, or `Creative` based on the subject.
+1. Read relevant published posts and drafts to check overlap and understand the blog's existing voice. Apply the editorial standard in `docs/ARTICLE_WRITING_RULES.md`; do not copy existing sentences. Select `Art`, `Exhibition`, or `Creative` based on the subject.
 2. Create a private draft without prompting the user for terminal input:
 
    `npm run article:new -- --topic "<theme>" --notes "<user notes>" --category <Art|Exhibition|Creative>`
 
    Record the returned `draft-id`. The command creates `brief.md` and an initial `index.md` atomically.
-3. Separate information into (a) statements supplied by the user, (b) facts verified from reliable sources, and (c) suggestions or unanswered questions. For changing facts, browse current primary sources and put source title, URL, access date, and the supported claim in `brief.md`. For exhibition posts verify dates, participating artists, venue, exhibition details, and organizer impressions. Never invent a personal experience or infer missing event details. If any material fact remains unresolved, leave it clearly marked in the brief and keep the article at `Draft`.
-4. Write the title, a concise SEO title (70 characters or fewer), a 40–160 character description, a valid unique lowercase-hyphen slug, category, tags, and a complete Japanese Markdown article with useful `##` headings. For a real article, use only verified facts and the user’s actual statements. Do not retain template text.
-5. Design the cover at the same time as the article. Record in `brief.md`: concept, visual direction, optional copy, 1200×630 target size, descriptive alt text, and a safe filename. If image generation is available, create an original image that does not reuse or alter existing artwork or photographs. If the returned generated file is outside the OS temporary folder, copy it unchanged into an operating-system temporary directory first, then save it with `npm run article:asset -- <draft-id> <temporary-image-path> <cover.png>`. Save only an actual generated file. If no local image file can be obtained, keep the image specification in the brief and leave `cover`/`ogImage` unset; never claim an image was generated.
+3. Record user-supplied facts, sourced facts, suggestions, and unanswered questions distinctly in `brief.md`, following `docs/ARTICLE_WRITING_RULES.md`. For changing facts, browse current primary sources and record source title, URL, access date, and supported claim. For exhibition posts, verify dates, participating artists, venue, exhibition details, and organizer impressions. If a material fact remains unresolved, leave it marked in the brief and keep the article at `Draft`.
+4. Apply the editorial standard to the title, opening, headings, body, and related links as one article. Set the blog metadata: a concise SEO title (70 characters or fewer), a 40–160 character description, a valid unique lowercase-hyphen slug, category, and tags. Use only confirmed information for real articles and remove all template text.
+5. Design the cover with the article, following `docs/ARTICLE_WRITING_RULES.md` and the existing blog design. Record in `brief.md`: concept, visual direction, optional copy, 1200×630 target size, descriptive alt text, and a safe filename. If image generation is available, create an original image that does not reuse or alter existing artwork or photographs. If the returned generated file is outside the OS temporary folder, copy it unchanged into an operating-system temporary directory first, then save it with `npm run article:asset -- <draft-id> <temporary-image-path> <cover.png>`. Save only an actual generated file. If no local image file can be obtained, keep the image specification in the brief and leave `cover`/`ogImage` unset; never claim an image was generated.
 6. Save the article and updated brief through the atomic workflow command, not by truncating `index.md` directly. Send JSON on standard input:
 
    `npm run article:save -- <draft-id> <<'ARTICLE_JSON'`
