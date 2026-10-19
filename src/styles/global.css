@@ -83,7 +83,7 @@ a:focus-visible { outline: 2px solid var(--olive); outline-offset: 5px; }
 .article-header h1 { max-width: 800px; font-size: clamp(1.8rem,4.5vw,3.3rem); line-height: 1.65; }
 .article-lead { max-width: 700px; margin: 24px 0 0; color: var(--muted); font-size: 15px; line-height: 2.1; }
 .article-cover { margin: 36px 0 0; }
-.article-cover__image { width: 100%; max-height: 560px; object-fit: cover; }
+.article-cover__image { width: 100%; height: auto; max-height: none; object-fit: contain; }
 .article-cover figcaption { margin-top: 8px; color: var(--muted); font-size: 11px; }
 .article-body { max-width: 720px; margin: 46px auto 0; font-size: 16px; line-height: 2.2; overflow-wrap: anywhere; }
 .article-body h2 { margin: 2.6em 0 .8em; padding-top: .55em; border-top: 1px solid var(--line); font-size: 23px; font-weight: 400; letter-spacing: .08em; line-height: 1.65; }
