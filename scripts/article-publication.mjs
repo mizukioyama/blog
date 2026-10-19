@@ -545,6 +545,125 @@ async function readAndVerifyPlan({ plansDir, planId }) {
   return { root, directory: planDirectory, payloadDirectory: payloadReal, manifest };
 }
 
+
+async function readPrivateJson(directory, fileName) {
+  const file = await assertRegularFile(path.join(directory, fileName), { optional: true });
+  if (!file || !inside(directory, file)) return null;
+  try { return JSON.parse(await readFile(file, 'utf8')); }
+  catch { return null; }
+}
+
+function sameStringList(left, right) {
+  return Array.isArray(left) && Array.isArray(right) &&
+    stableJson([...left].sort()) === stableJson([...right].sort());
+}
+
+export async function isVerifiedApprovedPublicationPair({
+  draftFile,
+  publicFile,
+  draftsDir = defaultDraftsDir,
+  contentDir = defaultContentDir,
+  plansDir = defaultPlansDir,
+}) {
+  try {
+    const draftsRoot = await assertDirectory(draftsDir);
+    const draftReal = await assertRegularFile(draftFile);
+    if (!inside(draftsRoot, draftReal)) return false;
+    const relativeDraft = path.relative(draftsRoot, draftReal).split(path.sep);
+    if (relativeDraft.length !== 2 || relativeDraft[1] !== 'index.md') return false;
+    const draftId = relativeDraft[0];
+    assertValidId(draftId, '下書きID');
+    const draft = await readDraftSnapshot({ draftsDir, draftId });
+    if (draft.indexFile !== draftReal || draft.data.workflowStatus !== 'Approved' || draft.data.draft !== true) return false;
+
+    const contentRoot = await assertDirectory(contentDir);
+    const publicReal = await assertRegularFile(publicFile);
+    if (!inside(contentRoot, publicReal)) return false;
+    const plansRoot = await assertDirectory(plansDir);
+    const matchingRecords = [];
+    for (const entry of await readdir(plansRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !validId.test(entry.name)) continue;
+      const directory = await assertDirectory(path.join(plansRoot, entry.name));
+      if (!inside(plansRoot, directory)) continue;
+      const transition = await readPrivateJson(directory, 'content-approval-transition.json');
+      if (transition?.article?.draftId === draftId && transition.article.slug === draft.data.slug) {
+        matchingRecords.push({ folderName: entry.name, directory, transition });
+      }
+    }
+    if (matchingRecords.length !== 1) return false;
+
+    const { folderName, directory, transition } = matchingRecords[0];
+    const planId = transition.candidate?.id;
+    if (typeof planId !== 'string' || planId !== folderName || !validId.test(planId)) return false;
+    const verified = await readAndVerifyPlan({ plansDir, planId });
+    if (verified.directory !== directory) return false;
+    const { manifest } = verified;
+    const candidate = manifest.candidate;
+    const candidateSha = candidate.candidateSha256;
+    const coverPath = cleanImageReference(candidate.cover);
+    const coverFile = candidate.files.find((file) => file.path === coverPath);
+    if (!coverFile) return false;
+
+    const partial = await readPrivateJson(directory, 'content-seo-approval.json');
+    if (!partial || partial.schemaVersion !== 1 ||
+        partial.article?.title !== candidate.title ||
+        partial.article?.draftId !== draftId ||
+        partial.article?.slug !== candidate.slug ||
+        partial.article?.candidateId !== planId ||
+        partial.article?.candidateSha256 !== candidateSha ||
+        partial.partialApproval?.status !== 'USER_APPROVED' ||
+        partial.partialApproval?.boundToCandidateSha256 !== candidateSha ||
+        !Array.isArray(partial.partialApproval.approved) ||
+        !['current article body', 'SEO title', 'Meta Description'].every((item) => partial.partialApproval.approved.includes(item))) return false;
+
+    const approvedArticle = transition.article;
+    const approvedCandidate = transition.candidate;
+    const approvals = transition.approvals;
+    if (transition.schemaVersion !== 1 ||
+        transition.recordType !== 'article-content-approval-and-status-transition' ||
+        approvedArticle.title !== candidate.title ||
+        approvedArticle.category !== candidate.category ||
+        approvedArticle.draftId !== draftId ||
+        approvedArticle.slug !== candidate.slug ||
+        approvedCandidate.id !== planId ||
+        approvedCandidate.sha256 !== candidateSha ||
+        approvedCandidate.publicUrl !== candidate.publicUrl ||
+        approvedCandidate.publishDate !== candidate.publishDate ||
+        !sameStringList(approvedCandidate.targetFiles, candidate.targetFiles) ||
+        approvedCandidate.coverSha256 !== coverFile.sha256 ||
+        transition.workflowTransition?.from !== 'Review' ||
+        transition.workflowTransition?.to !== 'Approved' ||
+        approvals?.body !== 'APPROVED' ||
+        approvals?.seoTitle !== 'APPROVED' ||
+        approvals?.metaDescription !== 'APPROVED' ||
+        approvals?.coverImage !== 'APPROVED' ||
+        approvals?.publicationDate !== 'APPROVED') return false;
+
+    if (manifest.source.draftId !== draftId ||
+        manifest.source.slug !== draft.data.slug ||
+        draft.data.slug !== candidate.slug ||
+        draft.data.title !== candidate.title ||
+        draft.data.category !== candidate.category ||
+        sourceContentDigest(draft.data, draft.content) !== manifest.source.contentSha256 ||
+        sha256(draft.brief) !== manifest.source.briefSha256) return false;
+
+    for (const file of candidate.files) {
+      if (file.path === 'index.md') continue;
+      const sourceAsset = await readContainedAsset(draft.directory, file.path);
+      if (sourceAsset.length !== file.bytes || sha256(sourceAsset) !== file.sha256) return false;
+    }
+
+    const target = path.resolve(contentRoot, ...candidate.targetDirectory.split('/'));
+    const targetReal = await assertDirectory(target);
+    if (!inside(contentRoot, targetReal)) return false;
+    if (await assertRegularFile(path.join(targetReal, 'index.md')) !== publicReal) return false;
+    if (await assertRegularFile(path.join(targetReal, privateMarker), { optional: true })) return false;
+    return await verifyTargetFiles(targetReal, candidate.files);
+  } catch {
+    return false;
+  }
+}
+
 async function ensureNormalChildDirectory(parent, name) {
   const parentReal = await assertDirectory(parent);
   const target = path.join(parentReal, name);
