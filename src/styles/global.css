@@ -432,18 +432,30 @@ html { scroll-padding-top: 128px; }
 }
 
 @media (max-width: 1024px) {
+  .site-header {
+    min-height: 84px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-block: 12px;
+  }
+
+  .site-header > .brand {
+    min-width: 0;
+  }
+
   .site-nav {
     display: none;
   }
 
   .mobile-menu-toggle {
-    position: fixed;
-    z-index: 1001;
-    right: max(22px, calc(env(safe-area-inset-right) + 12px));
-    bottom: max(22px, calc(env(safe-area-inset-bottom) + 12px));
+    position: static;
+    z-index: auto;
     display: grid;
-    width: 56px;
-    height: 56px;
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
     place-items: center;
     border: 1px solid var(--line);
     border-radius: 50%;
@@ -578,10 +590,6 @@ html { scroll-padding-top: 128px; }
 
   .mobile-menu__nav a:hover {
     color: var(--olive);
-  }
-
-  body {
-    padding-bottom: calc(84px + env(safe-area-inset-bottom));
   }
 }
 

@@ -31,7 +31,7 @@ The layout uses responsive `clamp()` values and media-query adjustments rather t
 
 ## Header and navigation
 
-`.site-header` is sticky at `top: 0` with `z-index: 5`. Desktop navigation remains in the header. At widths up to 1024 px, the desktop navigation is hidden and the fixed circular menu button is shown at the lower right; the button is 56 × 56 px and the dialog accounts for device safe areas. The layout includes skip navigation, named navigation landmarks, and page scroll padding for in-page destinations. Keep the existing markup and interactions unless the request explicitly targets them.
+`.site-header` is sticky at `top: 0` with `z-index: 5`. At widths of 1025 px and above, desktop navigation remains in the header. At widths up to 1024 px, the desktop navigation is hidden and a 48 × 48 px menu button sits inside the horizontal header row. The button remains in the header while the native `dialog` menu is closed and is placed within the dialog while it is open; the dialog accounts for device safe areas. Reduced-motion preferences are respected. The layout includes skip navigation, named navigation landmarks, and page scroll padding for in-page destinations. Keep the existing markup and interactions unless the request explicitly targets them.
 
 ## Footer
 
