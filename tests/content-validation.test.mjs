@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import matter from 'gray-matter';
 import { createDraft, saveDraftArticle, updateDraftStatus } from '../scripts/article-workflow.mjs';
-import { materializePublication, preparePublication } from '../scripts/article-publication.mjs';
+import { materializePublication, preparePublication, recordCandidateApproval } from '../scripts/article-publication.mjs';
 import { validateContentWorkspace } from '../scripts/validate-content.mjs';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -95,51 +95,7 @@ async function createFixture(context, {
   return { ...created, ...fixture, draftId: created.draftId };
 }
 
-async function writeApprovals(context, planId, fixture) {
-  const directory = path.join(context.plansDir, planId);
-  const manifest = JSON.parse(await readFile(path.join(directory, 'plan.json'), 'utf8'));
-  const candidate = manifest.candidate;
-  const cover = candidate.files.find((item) => item.path === candidate.cover.replace(/^\.\//, ''));
-  await writeFile(path.join(directory, 'content-seo-approval.json'), JSON.stringify({
-    schemaVersion: 1,
-    article: {
-      title: candidate.title,
-      draftId: fixture.draftId,
-      slug: candidate.slug,
-      candidateId: planId,
-      candidateSha256: candidate.candidateSha256,
-    },
-    partialApproval: {
-      status: 'USER_APPROVED',
-      approved: ['current article body', 'SEO title', 'Meta Description'],
-      boundToCandidateSha256: candidate.candidateSha256,
-    },
-  }, null, 2) + '\n');
-  await writeFile(path.join(directory, 'content-approval-transition.json'), JSON.stringify({
-    schemaVersion: 1,
-    recordType: 'article-content-approval-and-status-transition',
-    article: { title: candidate.title, category: candidate.category, draftId: fixture.draftId, slug: candidate.slug },
-    candidate: {
-      id: planId,
-      sha256: candidate.candidateSha256,
-      publicUrl: candidate.publicUrl,
-      targetFiles: candidate.targetFiles,
-      publishDate: candidate.publishDate,
-      coverSha256: cover.sha256,
-    },
-    approvals: {
-      body: 'APPROVED',
-      seoTitle: 'APPROVED',
-      metaDescription: 'APPROVED',
-      coverImage: 'APPROVED',
-      publicationDate: 'APPROVED',
-    },
-    workflowTransition: { from: 'Review', to: 'Approved' },
-  }, null, 2) + '\n');
-  return manifest;
-}
-
-async function materialize(context, fixture, { records = true } = {}) {
+async function materialize(context, fixture) {
   const plan = await preparePublication({
     draftsDir: context.draftsDir,
     contentDir: context.contentDir,
@@ -149,12 +105,29 @@ async function materialize(context, fixture, { records = true } = {}) {
     draftId: fixture.draftId,
     now: new Date('2026-10-19T01:02:03.000Z'),
   });
+  const approval = {
+    draftsDir: context.draftsDir,
+    plansDir: context.plansDir,
+    planId: plan.planId,
+    candidateSha256: plan.candidateSha256,
+  };
+  await recordCandidateApproval({
+    ...approval, kind: 'content',
+    approvalReference: 'fictional content approval fixture ' + plan.planId,
+    now: new Date('2026-10-19T01:03:00.000Z'),
+  });
   await updateDraftStatus({
     draftsDir: context.draftsDir,
     contentDir: context.contentDir,
     slug: fixture.draftId,
     workflowStatus: 'Approved',
     confirmedByUser: true,
+  });
+  await recordCandidateApproval({
+    ...approval, kind: 'github-publication',
+    approvalReference: 'fictional publication approval fixture ' + plan.planId,
+    authorizedActions: ['materialize'],
+    now: new Date('2026-10-19T01:04:00.000Z'),
   });
   await materializePublication({
     draftsDir: context.draftsDir,
@@ -163,7 +136,6 @@ async function materialize(context, fixture, { records = true } = {}) {
     planId: plan.planId,
     candidateSha256: plan.candidateSha256,
   });
-  if (records) await writeApprovals(context, plan.planId, fixture);
   return plan;
 }
 

@@ -21,9 +21,12 @@
     "article:recover": "node scripts/article-workflow.mjs recover",
     "article:preview": "node scripts/article-workflow.mjs preview",
     "article:publish:prepare": "node scripts/article-publication.mjs prepare",
+    "article:publish:record-approval": "node scripts/article-publication.mjs record-approval",
+    "article:publish:check-approval": "node scripts/article-publication.mjs check-approval",
+    "article:publish:check-git-scope": "node scripts/article-publication.mjs check-git-scope",
     "article:publish:materialize": "node scripts/article-publication.mjs materialize",
     "article:publish:verify": "node scripts/article-publication.mjs verify",
-    "test:articles": "node --test"
+    "test:articles": "node --test --test-concurrency=2"
   },
   "dependencies": {
     "astro": "^7.4.0",

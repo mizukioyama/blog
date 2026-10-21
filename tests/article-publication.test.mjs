@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
-  cp, lstat, link, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile,
+  cp, lstat, link, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, writeFile,
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,7 +12,7 @@ import {
   backupDraft, createDraft, saveDraftArticle, updateDraftStatus,
 } from '../scripts/article-workflow.mjs';
 import {
-  materializePublication, preparePublication, verifyLivePublication,
+  materializePublication, preparePublication, recordCandidateApproval, verifyCandidateApproval, verifyLivePublication,
 } from '../scripts/article-publication.mjs';
 import { validateArticleFile } from '../scripts/article-validation.mjs';
 
@@ -105,6 +105,32 @@ async function prepareFixture(context, fixture) {
   });
 }
 
+async function approveFixture(context, fixture, plan) {
+  const common = {
+    draftsDir: context.draftsDir,
+    plansDir: context.plansDir,
+    planId: plan.planId,
+    candidateSha256: plan.candidateSha256,
+  };
+  await recordCandidateApproval({
+    ...common,
+    kind: 'content',
+    approvalReference: 'fictional test content approval ' + plan.planId,
+    now: new Date('2026-10-20T00:00:00.000Z'),
+  });
+  await updateDraftStatus({
+    draftsDir: context.draftsDir, contentDir: context.contentDir, slug: fixture.draftId,
+    workflowStatus: 'Approved', confirmedByUser: true,
+  });
+  await recordCandidateApproval({
+    ...common,
+    kind: 'github-publication',
+    approvalReference: 'fictional test publication approval ' + plan.planId,
+    authorizedActions: ['materialize', 'stage', 'commit', 'push', 'workflow_dispatch'],
+    now: new Date('2026-10-20T00:01:00.000Z'),
+  });
+}
+
 function runPublicationCli(args, context) {
   return spawnSync(process.execPath, [publicationModule, ...args], {
     cwd: context.root,
@@ -117,6 +143,78 @@ function runPublicationCli(args, context) {
     },
     encoding: 'utf8',
   });
+}
+
+function runFixtureGit(root, args) {
+  return execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+}
+
+function runGitScopeCli(modulePath, args, context) {
+  return spawnSync(process.execPath, [modulePath, ...args], {
+    cwd: context.root,
+    env: {
+      ...process.env,
+      ARTICLE_DRAFTS_DIR: context.draftsDir,
+      ARTICLE_CONTENT_DIR: context.contentDir,
+      ARTICLE_BACKUPS_DIR: context.backupsDir,
+      ARTICLE_PUBLICATION_DIR: context.plansDir,
+    },
+    encoding: 'utf8',
+  });
+}
+
+async function initializeGitScopeFixture(context, plan, { candidateInBase = false } = {}) {
+  const scriptDirectory = path.join(context.root, 'scripts');
+  await mkdir(scriptDirectory, { recursive: true });
+  const fixtureModule = path.join(scriptDirectory, 'article-publication.mjs');
+  await cp(publicationModule, fixtureModule);
+  await cp(path.join(repoRoot, 'scripts/article-validation.mjs'), path.join(scriptDirectory, 'article-validation.mjs'));
+  await symlink(path.join(repoRoot, 'node_modules'), path.join(context.root, 'node_modules'), 'dir');
+
+  const manifest = JSON.parse(await readFile(path.join(context.plansDir, plan.planId, 'plan.json'), 'utf8'));
+  const repoPaths = manifest.candidate.files.map((file) =>
+    'src/content/blog/' + manifest.candidate.targetDirectory + '/' + file.path);
+  await writeFile(path.join(context.root, 'README.md'), 'Fictional isolated Git gate fixture.\\n');
+  if (candidateInBase) {
+    for (const file of manifest.candidate.files) {
+      const destination = path.join(context.contentDir, manifest.candidate.targetDirectory, ...file.path.split('/'));
+      await mkdir(path.dirname(destination), { recursive: true });
+      await writeFile(destination, await readFile(path.join(context.plansDir, plan.planId, 'payload', ...file.path.split('/'))));
+    }
+  }
+
+  runFixtureGit(context.root, ['init', '-b', 'main']);
+  runFixtureGit(context.root, ['config', 'user.name', 'Fictional Article Fixture']);
+  runFixtureGit(context.root, ['config', 'user.email', 'fictional@example.invalid']);
+  runFixtureGit(context.root, ['remote', 'add', 'origin', 'https://github.com/mizukioyama/blog.git']);
+  const baseFiles = ['README.md', ...(candidateInBase ? repoPaths : [])];
+  runFixtureGit(context.root, ['add', '--', ...baseFiles]);
+  runFixtureGit(context.root, ['commit', '-m', 'fictional isolated base']);
+  const baseCommit = runFixtureGit(context.root, ['rev-parse', 'HEAD']).trim();
+  runFixtureGit(context.root, ['update-ref', 'refs/remotes/origin/main', baseCommit]);
+  return { modulePath: await realpath(fixtureModule), repoPaths, manifest, baseCommit };
+}
+
+async function createGitScopeScenario(context, { candidateInBase = false } = {}) {
+  const fixture = await createReviewFixture(context);
+  const plan = await prepareFixture(context, fixture);
+  await approveFixture(context, fixture, plan);
+  const gitFixture = await initializeGitScopeFixture(context, plan, { candidateInBase });
+  if (!candidateInBase) {
+    await materializePublication({
+      draftsDir: context.draftsDir, contentDir: context.contentDir, plansDir: context.plansDir,
+      planId: plan.planId, candidateSha256: plan.candidateSha256,
+    });
+  }
+  return { fixture, plan, ...gitFixture };
+}
+
+function checkGitScope(context, scenario, phase = 'index', candidateSha256 = scenario.plan.candidateSha256) {
+  return runGitScopeCli(scenario.modulePath, [
+    'check-git-scope', scenario.plan.planId,
+    '--candidate-sha', candidateSha256,
+    '--phase', phase,
+  ], context);
 }
 
 async function collectFiles(directory, prefix = '') {
@@ -204,11 +302,28 @@ test('requires exact candidate binding and Approved status, then materializes wi
       materializePublication({ draftsDir: context.draftsDir, contentDir: context.contentDir, plansDir: context.plansDir, planId: plan.planId, candidateSha256: plan.candidateSha256 }),
       /Approved下書きが必要/,
     );
+    await recordCandidateApproval({
+      draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId,
+      candidateSha256: plan.candidateSha256, kind: 'content',
+      approvalReference: 'fictional test content approval ' + plan.planId,
+      now: new Date('2026-10-20T00:00:00.000Z'),
+    });
     await updateDraftStatus({ draftsDir: context.draftsDir, contentDir: context.contentDir, slug: fixture.draftId, workflowStatus: 'Approved', confirmedByUser: true });
     await assert.rejects(
       materializePublication({ draftsDir: context.draftsDir, contentDir: context.contentDir, plansDir: context.plansDir, planId: plan.planId, candidateSha256: '0'.repeat(64) }),
       /candidate SHA-256.*一致/,
     );
+    await assert.rejects(
+      materializePublication({ draftsDir: context.draftsDir, contentDir: context.contentDir, plansDir: context.plansDir, planId: plan.planId, candidateSha256: plan.candidateSha256 }),
+      /GitHub公開承認記録/,
+    );
+    await recordCandidateApproval({
+      draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId,
+      candidateSha256: plan.candidateSha256, kind: 'github-publication',
+      approvalReference: 'fictional test publication approval ' + plan.planId,
+      authorizedActions: ['materialize', 'stage', 'commit', 'push', 'workflow_dispatch'],
+      now: new Date('2026-10-20T00:01:00.000Z'),
+    });
     const dryRunCli = runPublicationCli(['materialize', plan.planId, '--candidate-sha', plan.candidateSha256, '--dry-run'], context);
     assert.equal(dryRunCli.status, 0, dryRunCli.stderr);
     const dryRun = JSON.parse(dryRunCli.stdout);
@@ -244,6 +359,382 @@ test('requires exact candidate binding and Approved status, then materializes wi
     });
     assert.equal(repeated.alreadyMaterialized, true);
     assert.deepEqual(await readFile(publicArticle), materializedBeforeRetry);
+  });
+});
+
+test('candidate approvals are separate, hash-bound, file-bound, date-bound, and action-scoped', async () => {
+  await withWorkspace(async (context) => {
+    const fixture = await createReviewFixture(context);
+    const plan = await prepareFixture(context, fixture);
+    const common = { draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId };
+    await assert.rejects(
+      recordCandidateApproval({
+        ...common, candidateSha256: '0'.repeat(64), kind: 'content',
+        approvalReference: 'fictional test content approval',
+      }),
+      /候補SHA-256/,
+    );
+    await recordCandidateApproval({
+      ...common, candidateSha256: plan.candidateSha256, kind: 'content',
+      approvalReference: 'fictional test content approval',
+      now: new Date('2026-10-20T00:00:00.000Z'),
+    });
+    await updateDraftStatus({ draftsDir: context.draftsDir, contentDir: context.contentDir, slug: fixture.draftId, workflowStatus: 'Approved', confirmedByUser: true });
+    await assert.rejects(
+      verifyCandidateApproval({ ...common, candidateSha256: plan.candidateSha256, action: 'materialize' }),
+      /GitHub公開承認記録/,
+    );
+    await recordCandidateApproval({
+      ...common, candidateSha256: plan.candidateSha256, kind: 'github-publication',
+      approvalReference: 'fictional test publication approval',
+      authorizedActions: ['materialize'],
+      now: new Date('2026-10-20T00:01:00.000Z'),
+    });
+    const verified = await verifyCandidateApproval({ ...common, candidateSha256: plan.candidateSha256, action: 'materialize' });
+    assert.deepEqual(verified.targetFiles, JSON.parse(await readFile(path.join(context.plansDir, plan.planId, 'plan.json'), 'utf8')).candidate.targetFiles);
+    await assert.rejects(
+      verifyCandidateApproval({ ...common, candidateSha256: plan.candidateSha256, action: 'push' }),
+      /GitHub公開承認記録/,
+    );
+
+    const receiptPath = path.join(context.plansDir, plan.planId, 'github-publication-approval.json');
+    const receipt = JSON.parse(await readFile(receiptPath, 'utf8'));
+    const originalReceipt = structuredClone(receipt);
+    receipt.candidate.targetFiles = ['creative/other/index.md'];
+    await writeFile(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+    await assert.rejects(
+      verifyCandidateApproval({ ...common, candidateSha256: plan.candidateSha256, action: 'materialize' }),
+      /GitHub公開承認記録/,
+    );
+    Object.assign(receipt, originalReceipt);
+    receipt.candidate.id = 'publication-tampered';
+    await writeFile(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+    await assert.rejects(
+      verifyCandidateApproval({ ...common, candidateSha256: plan.candidateSha256, action: 'materialize' }),
+      /GitHub公開承認記録/,
+    );
+    Object.assign(receipt, originalReceipt);
+    receipt.candidate.publishDate = '2026-10-20';
+    await writeFile(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+    await assert.rejects(
+      verifyCandidateApproval({ ...common, candidateSha256: plan.candidateSha256, action: 'materialize' }),
+      /GitHub公開承認記録/,
+    );
+  });
+
+  await withWorkspace(async (context) => {
+    const fixture = await createReviewFixture(context);
+    const plan = await prepareFixture(context, fixture);
+    const common = { draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId, candidateSha256: plan.candidateSha256 };
+    await updateDraftStatus({ draftsDir: context.draftsDir, contentDir: context.contentDir, slug: fixture.draftId, workflowStatus: 'Approved', confirmedByUser: true });
+    await recordCandidateApproval({
+      ...common, kind: 'github-publication', approvalReference: 'fictional test publication approval',
+      authorizedActions: ['materialize'],
+    });
+    await assert.rejects(
+      verifyCandidateApproval({ ...common, action: 'materialize' }),
+      /内容承認記録/,
+    );
+  });
+});
+
+test('approval CLI records and checks separate fictional receipts in an isolated workspace', async () => {
+  await withWorkspace(async (context) => {
+    const fixture = await createReviewFixture(context);
+    const plan = await prepareFixture(context, fixture);
+    const content = runPublicationCli([
+      'record-approval', plan.planId, '--kind', 'content',
+      '--candidate-sha', plan.candidateSha256,
+      '--approval-reference', 'fictional CLI content approval fixture',
+    ], context);
+    assert.equal(content.status, 0, content.stderr);
+    assert.match(content.stdout, /conversation-content-approval\.json/);
+
+    await updateDraftStatus({ draftsDir: context.draftsDir, contentDir: context.contentDir, slug: fixture.draftId, workflowStatus: 'Approved', confirmedByUser: true });
+    const publication = runPublicationCli([
+      'record-approval', plan.planId, '--kind', 'github-publication',
+      '--candidate-sha', plan.candidateSha256,
+      '--approval-reference', 'fictional CLI publication approval fixture',
+      '--authorized-actions', 'materialize,stage,commit,push,workflow_dispatch',
+    ], context);
+    assert.equal(publication.status, 0, publication.stderr);
+    assert.match(publication.stdout, /github-publication-approval\.json/);
+
+    const checked = runPublicationCli([
+      'check-approval', plan.planId, '--candidate-sha', plan.candidateSha256,
+      '--action', 'workflow_dispatch',
+    ], context);
+    assert.equal(checked.status, 0, checked.stderr);
+    assert.match(checked.stdout, /workflow_dispatch/);
+    assert.match(publication.stdout, /暗号学的な本人認証ではありません/);
+  });
+});
+
+test('approval receipts are atomic, no-replace, retryable, and fail closed', async (t) => {
+  await t.test('partial write and interruption never create an approval; retry succeeds', async () => {
+    await withWorkspace(async (context) => {
+      const fixture = await createReviewFixture(context);
+      const plan = await prepareFixture(context, fixture);
+      const common = { draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId, candidateSha256: plan.candidateSha256 };
+      const planDirectory = path.join(context.plansDir, plan.planId);
+      await assert.rejects(
+        recordCandidateApproval({
+          ...common, kind: 'content', approvalReference: 'fictional interrupted receipt fixture',
+          receiptIo: {
+            writeTemporary: async (handle, bytes) => {
+              await handle.writeFile(bytes.subarray(0, Math.min(13, bytes.length)));
+              throw new Error('fictional partial write interruption');
+            },
+          },
+        }),
+        /fictional partial write interruption/,
+      );
+      assert.equal(await readFile(path.join(planDirectory, 'content-seo-approval.json')).then(() => true, () => false), false);
+      assert.equal((await readdir(planDirectory)).some((name) => name.endsWith('.tmp')), false);
+
+      // Simulate a process crash that left a temp file. Exact receipt readers
+      // ignore it, and a fresh attempt uses a unique temp name.
+      await writeFile(path.join(planDirectory, '.conversation-content-approval.json.abandoned.tmp'), '{"partial":');
+      const retried = await recordCandidateApproval({
+        ...common, kind: 'content', approvalReference: 'fictional interrupted receipt fixture',
+      });
+      assert.equal(retried.alreadyRecorded, false);
+      assert.ok((await readdir(planDirectory)).includes('.conversation-content-approval.json.abandoned.tmp'));
+      await updateDraftStatus({
+        draftsDir: context.draftsDir, contentDir: context.contentDir, slug: fixture.draftId,
+        workflowStatus: 'Approved', confirmedByUser: true,
+      });
+      await recordCandidateApproval({
+        ...common, kind: 'github-publication', approvalReference: 'fictional retry publication fixture',
+        authorizedActions: ['materialize', 'stage', 'commit'],
+      });
+      await verifyCandidateApproval({ ...common, action: 'commit' });
+      const repeated = await recordCandidateApproval({
+        ...common, kind: 'content', approvalReference: 'fictional interrupted receipt fixture',
+      });
+      assert.equal(repeated.alreadyRecorded, true);
+      await assert.rejects(
+        recordCandidateApproval({
+          ...common, kind: 'content', approvalReference: 'different fictional approval intent',
+        }),
+        /内容承認記録が不一致/,
+      );
+    });
+  });
+
+  await t.test('corrupt or symlink receipt is never replaced', async () => {
+    await withWorkspace(async (context) => {
+      const fixture = await createReviewFixture(context);
+      const plan = await prepareFixture(context, fixture);
+      const common = { draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId, candidateSha256: plan.candidateSha256 };
+      const planDirectory = path.join(context.plansDir, plan.planId);
+      const receiptPath = path.join(planDirectory, 'conversation-content-approval.json');
+      await writeFile(receiptPath, '{"incomplete":');
+      await assert.rejects(
+        recordCandidateApproval({ ...common, kind: 'content', approvalReference: 'fictional corrupt receipt fixture' }),
+        /JSONとして読み取れません/,
+      );
+      assert.equal(await readFile(receiptPath, 'utf8'), '{"incomplete":');
+
+      await rm(receiptPath);
+      const symlinkTarget = path.join(context.root, 'receipt-target.json');
+      await writeFile(symlinkTarget, '{"foreign":"fixture"}');
+      await symlink(symlinkTarget, receiptPath);
+      await assert.rejects(
+        recordCandidateApproval({ ...common, kind: 'content', approvalReference: 'fictional symlink receipt fixture' }),
+        /通常ファイル以外/,
+      );
+      assert.equal(await readFile(symlinkTarget, 'utf8'), '{"foreign":"fixture"}');
+    });
+  });
+
+  await t.test('plan-directory replacement during receipt creation fails closed and can be retried', async () => {
+    await withWorkspace(async (context) => {
+      const fixture = await createReviewFixture(context);
+      const plan = await prepareFixture(context, fixture);
+      const common = { draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId, candidateSha256: plan.candidateSha256 };
+      const planDirectory = path.join(context.plansDir, plan.planId);
+      const movedDirectory = planDirectory + '-moved-fixture';
+      let replaced = false;
+      await assert.rejects(
+        recordCandidateApproval({
+          ...common, kind: 'content', approvalReference: 'fictional path replacement fixture',
+          receiptIo: {
+            beforeLink: async (_temporaryPath, finalPath) => {
+              if (replaced || !finalPath.endsWith('conversation-content-approval.json')) return;
+              replaced = true;
+              await rename(planDirectory, movedDirectory);
+              await mkdir(planDirectory, { mode: 0o700 });
+            },
+          },
+        }),
+        /ENOENT/,
+      );
+      const finalReceipt = path.join(planDirectory, 'conversation-content-approval.json');
+      assert.equal(await readFile(finalReceipt).then(() => true, () => false), false);
+      await rm(planDirectory, { recursive: true, force: true });
+      await rename(movedDirectory, planDirectory);
+
+      const retried = await recordCandidateApproval({
+        ...common, kind: 'content', approvalReference: 'fictional path replacement fixture',
+      });
+      assert.equal(retried.alreadyRecorded, false);
+      assert.ok(await readFile(finalReceipt, 'utf8'));
+    });
+  });
+
+  await t.test('concurrent identical writers converge; different approval intent is rejected', async () => {
+    await withWorkspace(async (context) => {
+      const fixture = await createReviewFixture(context);
+      const plan = await prepareFixture(context, fixture);
+      const common = { draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId, candidateSha256: plan.candidateSha256 };
+      const sameWrites = await Promise.all([
+        recordCandidateApproval({
+          ...common, kind: 'content', approvalReference: 'fictional concurrent identical fixture',
+          now: new Date('2026-10-20T01:00:00.000Z'),
+        }),
+        recordCandidateApproval({
+          ...common, kind: 'content', approvalReference: 'fictional concurrent identical fixture',
+          now: new Date('2026-10-20T01:00:01.000Z'),
+        }),
+      ]);
+      assert.equal(sameWrites.length, 2);
+      const planDirectory = path.join(context.plansDir, plan.planId);
+      assert.equal((await readdir(planDirectory)).some((name) => name.endsWith('.tmp')), false);
+
+      const competing = await Promise.allSettled([
+        recordCandidateApproval({
+          ...common, kind: 'github-publication', approvalReference: 'fictional concurrent publish A',
+          authorizedActions: ['stage', 'commit'],
+        }),
+        recordCandidateApproval({
+          ...common, kind: 'github-publication', approvalReference: 'fictional concurrent publish B',
+          authorizedActions: ['stage', 'commit', 'push'],
+        }),
+      ]);
+      assert.equal(competing.filter((result) => result.status === 'fulfilled').length, 1);
+      assert.equal(competing.filter((result) => result.status === 'rejected').length, 1);
+    });
+  });
+});
+
+test('Git scope gate checks exact index blobs and the post-commit tree in isolated fictional repositories', async (t) => {
+  await t.test('exact candidate index passes read-only and commit checks; parent mismatch fails', async () => {
+    await withWorkspace(async (context) => {
+      const scenario = await createGitScopeScenario(context);
+      const wrongCandidateSha = checkGitScope(context, scenario, 'index', '0'.repeat(64));
+      assert.notEqual(wrongCandidateSha.status, 0);
+      assert.match(wrongCandidateSha.stderr, /指定candidate SHA-256/);
+      runFixtureGit(context.root, ['add', '--', ...scenario.repoPaths]);
+      const before = runFixtureGit(context.root, ['diff', '--cached', '--name-status', '-z', '--find-renames']);
+      const indexResult = checkGitScope(context, scenario, 'index');
+      assert.equal(indexResult.status, 0, indexResult.stderr);
+      assert.match(indexResult.stdout, /"readOnly": true/);
+      assert.deepEqual(runFixtureGit(context.root, ['diff', '--cached', '--name-status', '-z', '--find-renames']), before);
+
+      runFixtureGit(context.root, ['commit', '-m', 'fictional candidate publication']);
+      const commitResult = checkGitScope(context, scenario, 'commit');
+      assert.equal(commitResult.status, 0, commitResult.stderr);
+      assert.match(commitResult.stdout, /"parentSha"/);
+      await writeFile(path.join(context.root, 'later-staged-fixture.txt'), 'fictional later staging\n');
+      runFixtureGit(context.root, ['add', '--', 'later-staged-fixture.txt']);
+      const leftoverStage = checkGitScope(context, scenario, 'commit');
+      assert.notEqual(leftoverStage.status, 0);
+      assert.match(leftoverStage.stderr, /commit後に別のステージ済み変更/);
+      const current = runFixtureGit(context.root, ['rev-parse', 'HEAD']).trim();
+      runFixtureGit(context.root, ['update-ref', 'refs/remotes/origin/main', current]);
+      const wrongParent = checkGitScope(context, scenario, 'commit');
+      assert.notEqual(wrongParent.status, 0);
+      assert.match(wrongParent.stderr, /親が確認済みorigin\/mainと一致しません/);
+    });
+  });
+
+  await t.test('missing and extra staged paths are rejected', async () => {
+    await withWorkspace(async (context) => {
+      const missing = await createGitScopeScenario(context);
+      runFixtureGit(context.root, ['add', '--', missing.repoPaths[0]]);
+      const missingResult = checkGitScope(context, missing);
+      assert.notEqual(missingResult.status, 0);
+      assert.match(missingResult.stderr, /候補ファイルが欠落/);
+    });
+    await withWorkspace(async (context) => {
+      const extra = await createGitScopeScenario(context);
+      await writeFile(path.join(context.root, 'unrelated-fixture.txt'), 'not in candidate\\n');
+      runFixtureGit(context.root, ['add', '--', ...extra.repoPaths, 'unrelated-fixture.txt']);
+      const extraResult = checkGitScope(context, extra);
+      assert.notEqual(extraResult.status, 0);
+      assert.match(extraResult.stderr, /allowlist外/);
+    });
+  });
+
+  await t.test('staged content hash mismatch and non-add status are rejected', async () => {
+    await withWorkspace(async (context) => {
+      const changed = await createGitScopeScenario(context);
+      const articlePath = path.join(context.root, changed.repoPaths.find((value) => value.endsWith('/index.md')));
+      await writeFile(articlePath, (await readFile(articlePath, 'utf8')) + '\\nTampered fixture bytes.\\n');
+      runFixtureGit(context.root, ['add', '--', ...changed.repoPaths]);
+      const changedResult = checkGitScope(context, changed);
+      assert.notEqual(changedResult.status, 0);
+      assert.match(changedResult.stderr, /SHA-256が保存payloadと一致しません/);
+    });
+    await withWorkspace(async (context) => {
+      const committed = await createGitScopeScenario(context);
+      const articlePath = path.join(context.root, committed.repoPaths.find((value) => value.endsWith('/index.md')));
+      await writeFile(articlePath, (await readFile(articlePath, 'utf8')) + '\nChanged only in fictional commit tree.\n');
+      runFixtureGit(context.root, ['add', '--', ...committed.repoPaths]);
+      runFixtureGit(context.root, ['commit', '-m', 'fictional altered candidate blob']);
+      const result = checkGitScope(context, committed, 'commit');
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /commit tree の候補ファイルSHA-256が保存payloadと一致しません/);
+    });
+    await withWorkspace(async (context) => {
+      const modified = await createGitScopeScenario(context, { candidateInBase: true });
+      const articlePath = path.join(context.root, modified.repoPaths.find((value) => value.endsWith('/index.md')));
+      await writeFile(articlePath, (await readFile(articlePath, 'utf8')) + '\\nModified fixture bytes.\\n');
+      runFixtureGit(context.root, ['add', '--', ...modified.repoPaths]);
+      const modifiedResult = checkGitScope(context, modified);
+      assert.notEqual(modifiedResult.status, 0);
+      assert.match(modifiedResult.stderr, /変更種別が新規追加Aではありません: M/);
+    });
+  });
+
+  await t.test('delete, rename, symlink, and post-commit extra file are rejected', async () => {
+    await withWorkspace(async (context) => {
+      const deleted = await createGitScopeScenario(context, { candidateInBase: true });
+      runFixtureGit(context.root, ['rm', '--', deleted.repoPaths[0]]);
+      const result = checkGitScope(context, deleted);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /変更種別が新規追加Aではありません: D/);
+    });
+    await withWorkspace(async (context) => {
+      const renamed = await createGitScopeScenario(context, { candidateInBase: true });
+      const oldPath = renamed.repoPaths.find((value) => value.endsWith('/phase2b-public-cover.png'));
+      runFixtureGit(context.root, ['mv', '--', oldPath, oldPath.replace('phase2b-public-cover.png', 'phase2b-renamed-cover.png')]);
+      const result = checkGitScope(context, renamed);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /rename\/copy/);
+    });
+    await withWorkspace(async (context) => {
+      const linked = await createGitScopeScenario(context);
+      const imagePath = path.join(context.root, linked.repoPaths.find((value) => value.endsWith('/phase2b-public-cover.png')));
+      const linkedPath = linked.repoPaths.find((value) => value.endsWith('/phase2b-public-cover.png'));
+      const target = path.join(context.root, 'README.md');
+      await rm(imagePath);
+      await symlink(target, imagePath);
+      runFixtureGit(context.root, ['add', '--', ...linked.repoPaths]);
+      const result = checkGitScope(context, linked);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /通常の非実行ファイルではありません/);
+    });
+    await withWorkspace(async (context) => {
+      const committed = await createGitScopeScenario(context);
+      await writeFile(path.join(context.root, 'unrelated-committed-fixture.txt'), 'outside candidate\\n');
+      runFixtureGit(context.root, ['add', '--', ...committed.repoPaths, 'unrelated-committed-fixture.txt']);
+      runFixtureGit(context.root, ['commit', '-m', 'fictional out-of-scope commit']);
+      const result = checkGitScope(context, committed, 'commit');
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /allowlist外/);
+    });
   });
 });
 
@@ -306,7 +797,7 @@ test('refuses duplicate slugs, unsafe images, and stale candidate content', asyn
   await withWorkspace(async (context) => {
     const fixture = await createReviewFixture(context);
     const plan = await prepareFixture(context, fixture);
-    await updateDraftStatus({ draftsDir: context.draftsDir, contentDir: context.contentDir, slug: fixture.draftId, workflowStatus: 'Approved', confirmedByUser: true });
+    await approveFixture(context, fixture, plan);
     const parsed = matter(await readFile(fixture.articlePath, 'utf8'));
     await writeFile(fixture.articlePath, matter.stringify(parsed.content + '\n追加された未承認の変更です。\n', parsed.data));
     await assert.rejects(
@@ -323,7 +814,7 @@ test('resumes an interrupted local placement without replacing files or losing t
     const backup = await backupDraft({ draftsDir: context.draftsDir, backupsDir: context.backupsDir, draftId: fixture.draftId });
     const backupIndex = await readFile(path.join(backup.path, 'index.md'));
     const plan = await prepareFixture(context, fixture);
-    await updateDraftStatus({ draftsDir: context.draftsDir, contentDir: context.contentDir, slug: fixture.draftId, workflowStatus: 'Approved', confirmedByUser: true });
+    await approveFixture(context, fixture, plan);
     await assert.rejects(
       materializePublication({
         draftsDir: context.draftsDir, contentDir: context.contentDir, plansDir: context.plansDir,
@@ -416,7 +907,7 @@ test('builds a materialized fictional article in an isolated Astro project while
     });
     await writeFile(path.join(context.draftsDir, privateMarker, 'index.md'), draftArticle);
     const plan = await prepareFixture(context, fixture);
-    await updateDraftStatus({ draftsDir: context.draftsDir, contentDir: context.contentDir, slug: fixture.draftId, workflowStatus: 'Approved', confirmedByUser: true });
+    await approveFixture(context, fixture, plan);
     await materializePublication({
       draftsDir: context.draftsDir, contentDir: context.contentDir, plansDir: context.plansDir,
       planId: plan.planId, candidateSha256: plan.candidateSha256,

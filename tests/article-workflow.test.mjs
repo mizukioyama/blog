@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import matter from 'gray-matter';
 import { validateArticleData } from '../scripts/article-validation.mjs';
-import { materializePublication, preparePublication } from '../scripts/article-publication.mjs';
+import { materializePublication, preparePublication, recordCandidateApproval } from '../scripts/article-publication.mjs';
 import {
   backupDraft,
   createDraft,
@@ -402,12 +402,25 @@ async function createApprovedPublishedPair(context, slug = 'approved-published-f
     draftId: created.draftId,
     now: new Date('2026-10-19T12:30:00.000Z'),
   });
+  await recordCandidateApproval({
+    draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId,
+    candidateSha256: plan.candidateSha256, kind: 'content',
+    approvalReference: 'fictional workflow content approval ' + plan.planId,
+    now: new Date('2026-10-19T12:40:00.000Z'),
+  });
   await updateDraftStatus({
     draftsDir: context.draftsDir,
     contentDir: context.contentDir,
     slug: created.draftId,
     workflowStatus: 'Approved',
     confirmedByUser: true,
+  });
+  await recordCandidateApproval({
+    draftsDir: context.draftsDir, plansDir: context.plansDir, planId: plan.planId,
+    candidateSha256: plan.candidateSha256, kind: 'github-publication',
+    approvalReference: 'fictional workflow publication approval ' + plan.planId,
+    authorizedActions: ['materialize', 'stage', 'commit', 'push', 'workflow_dispatch'],
+    now: new Date('2026-10-19T12:41:00.000Z'),
   });
   await materializePublication({
     draftsDir: context.draftsDir,
@@ -420,44 +433,6 @@ async function createApprovedPublishedPair(context, slug = 'approved-published-f
   const planDirectory = path.join(context.plansDir, plan.planId);
   const manifest = JSON.parse(await readFile(path.join(planDirectory, 'plan.json'), 'utf8'));
   const candidate = manifest.candidate;
-  const coverPath = candidate.cover.replace(/^\.\//, '');
-  const coverRecord = candidate.files.find((file) => file.path === coverPath);
-  await writeFile(path.join(planDirectory, 'content-seo-approval.json'), JSON.stringify({
-    schemaVersion: 1,
-    article: {
-      title: candidate.title,
-      draftId: created.draftId,
-      slug: candidate.slug,
-      candidateId: plan.planId,
-      candidateSha256: candidate.candidateSha256,
-    },
-    partialApproval: {
-      status: 'USER_APPROVED',
-      approved: ['current article body', 'SEO title', 'Meta Description'],
-      boundToCandidateSha256: candidate.candidateSha256,
-    },
-  }, null, 2) + '\n');
-  await writeFile(path.join(planDirectory, 'content-approval-transition.json'), JSON.stringify({
-    schemaVersion: 1,
-    recordType: 'article-content-approval-and-status-transition',
-    article: { title: candidate.title, category: candidate.category, draftId: created.draftId, slug: candidate.slug },
-    candidate: {
-      id: plan.planId,
-      sha256: candidate.candidateSha256,
-      publicUrl: candidate.publicUrl,
-      targetFiles: candidate.targetFiles,
-      publishDate: candidate.publishDate,
-      coverSha256: coverRecord.sha256,
-    },
-    approvals: {
-      body: 'APPROVED',
-      seoTitle: 'APPROVED',
-      metaDescription: 'APPROVED',
-      coverImage: 'APPROVED',
-      publicationDate: 'APPROVED',
-    },
-    workflowTransition: { from: 'Review', to: 'Approved' },
-  }, null, 2) + '\n');
 
   const publicDirectory = path.join(context.contentDir, ...candidate.targetDirectory.split('/'));
   return {

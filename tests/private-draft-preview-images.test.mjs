@@ -113,18 +113,30 @@ async function getFreePort() {
   return address.port;
 }
 
-async function waitForPage(url, child, getLogs) {
-  let lastError;
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode !== null) throw new Error('Astro dev stopped early (code=' + child.exitCode + ', signal=' + child.signalCode + ').\n' + getLogs());
+async function waitForPage(url, child, getLogs, { timeoutMs = 30_000, intervalMs = 250 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let attempts = 0;
+  let lastStatus = null;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error('Astro dev stopped before the preview returned HTTP 200 (code=' + child.exitCode +
+        ', signal=' + child.signalCode + ', lastStatus=' + lastStatus + ').\n' + getLogs());
+    }
+    attempts += 1;
     try {
-      return await fetch(url);
+      const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+      if (response.status === 200) return response;
+      lastStatus = response.status;
+      await response.body?.cancel().catch(() => {});
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 250));
     }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-  throw new Error('Astro dev did not become reachable: ' + String(lastError) + '\n' + getLogs());
+  throw new Error('Astro preview route did not return HTTP 200 within ' + timeoutMs + 'ms (' +
+    attempts + ' attempts, lastStatus=' + lastStatus + ', lastError=' + String(lastError) + ').\n' +
+    getLogs().slice(-6000));
 }
 
 test('private draft image paths reject traversal, symlinks, and non-loopback access', async (t) => {

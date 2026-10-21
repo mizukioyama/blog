@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import {
   lstat, mkdir, open, readFile, readdir, realpath, rename, link, unlink, rmdir, rm,
 } from 'node:fs/promises';
@@ -22,6 +23,11 @@ const humanReviewChecklist = [
   '本人確認が必要な経験・事実・公開予定日の確認',
   '公開内容とGitHub Pagesへの公開操作を別々に明示承認',
 ];
+const conversationContentApprovalFile = 'conversation-content-approval.json';
+const githubPublicationApprovalFile = 'github-publication-approval.json';
+const approvedContentScopes = ['body', 'seoTitle', 'metaDescription', 'coverImage', 'publicationDate'];
+const allowedPublicationActions = new Set(['materialize', 'stage', 'commit', 'push', 'workflow_dispatch']);
+
 const categoryDirectories = new Map([['Art', 'art'], ['Exhibition', 'exhibition'], ['Creative', 'creative']]);
 const validId = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const validCommit = /^[a-f0-9]{40}$/i;
@@ -558,6 +564,503 @@ function sameStringList(left, right) {
     stableJson([...left].sort()) === stableJson([...right].sort());
 }
 
+
+function approvalBinding(manifest) {
+  const candidate = manifest.candidate;
+  return {
+    article: { title: candidate.title, category: candidate.category, draftId: manifest.source.draftId, slug: candidate.slug },
+    candidate: {
+      id: manifest.planId, sha256: candidate.candidateSha256, publicUrl: candidate.publicUrl,
+      publishDate: candidate.publishDate, targetFiles: [...candidate.targetFiles].sort(),
+      files: candidate.files.map(({ path: p, sha256: hash, bytes, kind }) => ({ path: p, sha256: hash, bytes, kind }))
+        .sort((a, b) => a.path.localeCompare(b.path)),
+    },
+  };
+}
+function approvalEvidence(reference, now) {
+  if (typeof reference !== 'string' || reference.trim().length < 8 || reference.trim().length > 240 ||
+      /[\u0000-\u001f\u007f]/.test(reference)) {
+    throw new Error('承認記録の参照情報を8〜240文字で指定してください。会話全文や個人情報は記録しないでください。');
+  }
+  return { method: 'codex-conversation-review', reference: reference.trim(), recordedAt: now.toISOString() };
+}
+function validApprovalEvidence(value) {
+  return value?.method === 'codex-conversation-review' &&
+    typeof value.reference === 'string' && value.reference.trim().length >= 8 && value.reference.trim().length <= 240 &&
+    !/[\u0000-\u001f\u007f]/.test(value.reference) && typeof value.recordedAt === 'string' &&
+    Number.isFinite(Date.parse(value.recordedAt));
+}
+async function readApprovalRecord(directory, name) {
+  const file = await assertRegularFile(path.join(directory, name), { optional: true });
+  if (!file) return null;
+  if (!inside(directory, file)) throw new Error('承認記録が公開候補フォルダーの外を指しています。');
+  try { return JSON.parse(await readFile(file, 'utf8')); }
+  catch { throw new Error(name + ' をJSONとして読み取れません。既存記録を保全して手動確認してください。'); }
+}
+function withoutApprovalEvidence(record) {
+  if (!record || typeof record !== 'object') return record;
+  const copy = structuredClone(record);
+  delete copy.approvalEvidence;
+  return copy;
+}
+function sameApprovalIntent(existing, requested) {
+  const left = structuredClone(existing);
+  const right = structuredClone(requested);
+  if (left.evidence) delete left.evidence.recordedAt;
+  if (right.evidence) delete right.evidence.recordedAt;
+  return stableJson(left) === stableJson(right);
+}
+const approvalReceiptNames = new Set([
+  'content-seo-approval.json',
+  'content-approval-transition.json',
+  conversationContentApprovalFile,
+  githubPublicationApprovalFile,
+]);
+
+async function syncReceiptDirectory(directory, syncDirectory) {
+  if (syncDirectory) return syncDirectory(directory);
+  let handle;
+  try {
+    handle = await open(directory, 'r');
+    await handle.sync();
+  } catch (error) {
+    // Some supported filesystems do not allow fsync on a directory. Receipt bytes
+    // have already been synced; the atomic directory entry may be lost on a crash,
+    // in which case a retry safely creates it again.
+    if (!['EINVAL', 'ENOTSUP', 'EOPNOTSUPP', 'EBADF', 'EISDIR'].includes(error.code)) throw error;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
+/**
+ * Persist complete receipt bytes through a same-directory hard link. link(2)
+ * atomically creates the destination only if it does not exist; unlike rename,
+ * it never replaces an existing receipt. The temporary file is not a receipt.
+ */
+async function persistReceiptNoReplace(file, contents, io = {}) {
+  const inputDirectory = path.dirname(file);
+  const directory = await assertDirectory(inputDirectory);
+  const directoryInfo = await lstat(directory);
+  if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) {
+    throw new Error('承認記録の保存先は通常の非公開ディレクトリではありません。');
+  }
+  if (process.platform !== 'win32' && (directoryInfo.mode & 0o077) !== 0) {
+    throw new Error('承認記録の保存先は所有者だけがアクセスできる権限にしてください。');
+  }
+  if (typeof process.getuid === 'function' && directoryInfo.uid !== process.getuid()) {
+    throw new Error('承認記録の保存先が現在のユーザー所有ではありません。');
+  }
+  const name = path.basename(file);
+  if (!approvalReceiptNames.has(name) || path.dirname(path.resolve(file)) !== directory) {
+    throw new Error('承認記録のパスが許可された保存先ではありません。');
+  }
+  const finalPath = path.join(directory, name);
+  const temporaryPath = path.join(directory, '.' + name + '.' + randomUUID() + '.tmp');
+  let handle;
+  let temporaryCreated = false;
+  try {
+    if (await realpath(inputDirectory) !== directory) throw new Error('承認記録の保存先が処理中に置き換わりました。');
+    handle = await open(temporaryPath, 'wx', 0o600);
+    temporaryCreated = true;
+    const originalStat = await handle.stat();
+    await (io.writeTemporary ?? ((fileHandle, bytes) => fileHandle.writeFile(bytes)))(
+      handle, Buffer.from(contents, 'utf8'),
+    );
+    await (io.syncFile ?? ((fileHandle) => fileHandle.sync()))(handle);
+    await handle.close();
+    handle = null;
+
+    const [currentDirectoryInfo, temporaryInfo] = await Promise.all([
+      lstat(directory), lstat(temporaryPath),
+    ]);
+    if (currentDirectoryInfo.dev !== directoryInfo.dev || currentDirectoryInfo.ino !== directoryInfo.ino ||
+        !currentDirectoryInfo.isDirectory() || currentDirectoryInfo.isSymbolicLink() ||
+        await realpath(inputDirectory) !== directory) {
+      throw new Error('承認記録の保存先が処理中に置き換わりました。');
+    }
+    if (!temporaryInfo.isFile() || temporaryInfo.isSymbolicLink() ||
+        temporaryInfo.dev !== originalStat.dev || temporaryInfo.ino !== originalStat.ino) {
+      throw new Error('承認記録の一時ファイルが処理中に置き換わりました。');
+    }
+    await io.beforeLink?.(temporaryPath, finalPath);
+    try {
+      await (io.linkNoReplace ?? link)(temporaryPath, finalPath);
+    } catch (error) {
+      if (error.code === 'EEXIST') return false;
+      throw error;
+    }
+    const [finalInfo, afterDirectoryInfo] = await Promise.all([
+      lstat(finalPath), lstat(directory),
+    ]);
+    if (!finalInfo.isFile() || finalInfo.isSymbolicLink() ||
+        finalInfo.dev !== originalStat.dev || finalInfo.ino !== originalStat.ino ||
+        afterDirectoryInfo.dev !== directoryInfo.dev || afterDirectoryInfo.ino !== directoryInfo.ino) {
+      throw new Error('確定した承認記録のファイルまたは保存先を検証できません。');
+    }
+    await syncReceiptDirectory(directory, io.syncDirectory);
+    return true;
+  } finally {
+    await handle?.close().catch(() => {});
+    if (temporaryCreated) await unlink(temporaryPath).catch(() => {});
+  }
+}
+
+async function writeApprovalRecord(directory, name, record, allowLegacy = false, receiptIo = {}) {
+  if (!approvalReceiptNames.has(name)) throw new Error('承認記録のファイル名が許可範囲外です。');
+  const matches = (existing) => allowLegacy
+    ? stableJson(withoutApprovalEvidence(existing)) === stableJson(withoutApprovalEvidence(record))
+    : sameApprovalIntent(existing, record);
+  const current = await readApprovalRecord(directory, name);
+  if (current) {
+    if (!matches(current)) throw new Error(name + ' が既に存在し、候補・承認範囲が異なるため上書きしません。');
+    return false;
+  }
+  const created = await persistReceiptNoReplace(
+    path.join(directory, name), JSON.stringify(record, null, 2) + '\n', receiptIo,
+  );
+  if (created) return true;
+  // A concurrent writer won the no-replace link. Re-read and accept only the
+  // same complete record; symlinks, corrupt JSON, and different intent fail closed.
+  const raced = await readApprovalRecord(directory, name);
+  if (!raced || !matches(raced)) {
+    throw new Error(name + ' が並行作成され、候補・承認範囲が一致しないため停止しました。');
+  }
+  return false;
+}
+function legacyApprovalRecords(manifest, evidence) {
+  const c = manifest.candidate;
+  const cover = candidateFile(c, cleanImageReference(c.cover));
+  if (!cover) throw new Error('候補のアイキャッチハッシュがありません。');
+  return {
+    partial: {
+      schemaVersion: 1,
+      article: { title: c.title, draftId: manifest.source.draftId, slug: c.slug, candidateId: manifest.planId, candidateSha256: c.candidateSha256 },
+      partialApproval: { status: 'USER_APPROVED', approved: ['current article body', 'SEO title', 'Meta Description'], boundToCandidateSha256: c.candidateSha256 },
+      approvalEvidence: evidence,
+    },
+    transition: {
+      schemaVersion: 1, recordType: 'article-content-approval-and-status-transition',
+      article: { title: c.title, category: c.category, draftId: manifest.source.draftId, slug: c.slug },
+      candidate: { id: manifest.planId, sha256: c.candidateSha256, publicUrl: c.publicUrl, targetFiles: c.targetFiles, publishDate: c.publishDate, coverSha256: cover.sha256 },
+      approvals: { body: 'APPROVED', seoTitle: 'APPROVED', metaDescription: 'APPROVED', coverImage: 'APPROVED', publicationDate: 'APPROVED' },
+      workflowTransition: { from: 'Review', to: 'Approved' },
+      approvalEvidence: evidence,
+    },
+  };
+}
+function candidateFile(candidate, filename) {
+  return candidate.files.find((file) => file.path === filename);
+}
+async function assertDraftMatchesPlan(draft, manifest) {
+  const c = manifest.candidate;
+  if (draft.data.draft !== true || draft.data.title !== c.title || draft.data.category !== c.category ||
+      draft.data.slug !== c.slug || sourceContentDigest(draft.data, draft.content) !== manifest.source.contentSha256 ||
+      sha256(draft.brief) !== manifest.source.briefSha256 || unresolvedBriefMarker(draft.brief)) {
+    throw new Error('候補作成後に元下書きまたはbriefが変更されています。');
+  }
+  for (const file of c.files) {
+    if (file.path === 'index.md') continue;
+    const asset = await readContainedAsset(draft.directory, file.path);
+    if (asset.length !== file.bytes || sha256(asset) !== file.sha256) throw new Error('元下書きの画像が候補から変更されています。');
+  }
+}
+export async function recordCandidateApproval({
+  draftsDir = defaultDraftsDir, plansDir = defaultPlansDir, planId, candidateSha256: expected,
+  kind, approvalReference, authorizedActions, now = new Date(), receiptIo,
+}) {
+  if (!['content', 'github-publication'].includes(kind)) throw new Error('承認種別はcontentまたはgithub-publicationを指定してください。');
+  const { directory, manifest } = await readAndVerifyPlan({ plansDir, planId });
+  const binding = approvalBinding(manifest);
+  if (!/^[a-f0-9]{64}$/.test(expected ?? '') || binding.candidate.sha256 !== expected) throw new Error('候補SHA-256が保存済み候補と一致しません。');
+  const draft = await readDraftSnapshot({ draftsDir, draftId: manifest.source.draftId });
+  await assertDraftMatchesPlan(draft, manifest);
+  const evidence = approvalEvidence(approvalReference, now);
+  if (kind === 'content') {
+    const requested = { schemaVersion: 1, recordType: 'candidate-content-approval', evidence, ...binding, approvedScope: approvedContentScopes };
+    const existing = await readApprovalRecord(directory, conversationContentApprovalFile);
+    if (existing) {
+      if (!sameApprovalIntent(existing, requested)) throw new Error('内容承認記録が不一致のため上書きしません。');
+      return { planId, kind, recordFile: conversationContentApprovalFile, alreadyRecorded: true };
+    }
+    if (draft.data.workflowStatus !== 'Review') throw new Error('内容承認記録はReview状態で作成してください。');
+    const legacy = legacyApprovalRecords(manifest, evidence);
+    for (const [name, record] of [['content-seo-approval.json', legacy.partial], ['content-approval-transition.json', legacy.transition]]) {
+      const old = await readApprovalRecord(directory, name);
+      if (old && stableJson(withoutApprovalEvidence(old)) !== stableJson(withoutApprovalEvidence(record))) {
+        throw new Error(name + ' が候補と一致しません。既存記録を変更せず停止します。');
+      }
+    }
+    await writeApprovalRecord(directory, 'content-seo-approval.json', legacy.partial, true, receiptIo);
+    await writeApprovalRecord(directory, 'content-approval-transition.json', legacy.transition, true, receiptIo);
+    const created = await writeApprovalRecord(directory, conversationContentApprovalFile, requested, false, receiptIo);
+    return { planId, kind, recordFile: conversationContentApprovalFile, alreadyRecorded: !created };
+  }
+  if (!Array.isArray(authorizedActions) || !authorizedActions.length ||
+      authorizedActions.some((item) => !allowedPublicationActions.has(item)) || new Set(authorizedActions).size !== authorizedActions.length) {
+    throw new Error('公開承認の許可操作が空、重複、または未対応です。');
+  }
+  const requested = { schemaVersion: 1, recordType: 'github-publication-approval', evidence, ...binding, authorizedActions: [...authorizedActions].sort() };
+  const old = await readApprovalRecord(directory, githubPublicationApprovalFile);
+  if (old) {
+    if (!sameApprovalIntent(old, requested)) throw new Error('GitHub公開承認記録が不一致のため上書きしません。');
+    return { planId, kind, recordFile: githubPublicationApprovalFile, alreadyRecorded: true };
+  }
+  const created = await writeApprovalRecord(directory, githubPublicationApprovalFile, requested, false, receiptIo);
+  return { planId, kind, recordFile: githubPublicationApprovalFile, alreadyRecorded: !created };
+}
+export async function verifyCandidateApproval({
+  draftsDir = defaultDraftsDir, plansDir = defaultPlansDir, planId, candidateSha256: expected, action,
+}) {
+  if (!allowedPublicationActions.has(action)) throw new Error('検証対象の公開操作が許可範囲外です。');
+  const { directory, manifest } = await readAndVerifyPlan({ plansDir, planId });
+  const binding = approvalBinding(manifest);
+  if (binding.candidate.sha256 !== expected) throw new Error('候補SHA-256が承認記録と一致しません。');
+  const draft = await readDraftSnapshot({ draftsDir, draftId: manifest.source.draftId });
+  if (draft.data.workflowStatus !== 'Approved') throw new Error('Approved状態ではありません。');
+  await assertDraftMatchesPlan(draft, manifest);
+  const content = await readApprovalRecord(directory, conversationContentApprovalFile);
+  if (!content || content.schemaVersion !== 1 || content.recordType !== 'candidate-content-approval' ||
+      !validApprovalEvidence(content.evidence) || stableJson(content.article) !== stableJson(binding.article) ||
+      stableJson(content.candidate) !== stableJson(binding.candidate) || !sameStringList(content.approvedScope, approvedContentScopes)) {
+    throw new Error('候補に結び付いた内容承認記録が欠落または不一致です。');
+  }
+  const legacy = legacyApprovalRecords(manifest, content.evidence);
+  for (const [name, expectedRecord] of [['content-seo-approval.json', legacy.partial], ['content-approval-transition.json', legacy.transition]]) {
+    const actual = await readApprovalRecord(directory, name);
+    if (!actual || stableJson(withoutApprovalEvidence(actual)) !== stableJson(withoutApprovalEvidence(expectedRecord))) {
+      throw new Error(name + ' が候補に結び付いていないか、不一致です。');
+    }
+  }
+  const publication = await readApprovalRecord(directory, githubPublicationApprovalFile);
+  if (!publication || publication.schemaVersion !== 1 || publication.recordType !== 'github-publication-approval' ||
+      !validApprovalEvidence(publication.evidence) || stableJson(publication.article) !== stableJson(binding.article) ||
+      stableJson(publication.candidate) !== stableJson(binding.candidate) || !Array.isArray(publication.authorizedActions) ||
+      publication.authorizedActions.some((item) => !allowedPublicationActions.has(item)) ||
+      new Set(publication.authorizedActions).size !== publication.authorizedActions.length ||
+      !publication.authorizedActions.includes(action)) {
+    throw new Error('GitHub公開承認記録が欠落、不一致、または操作範囲外です。');
+  }
+  return { planId, candidateSha256: binding.candidate.sha256, action, publicUrl: binding.candidate.publicUrl,
+    publishDate: binding.candidate.publishDate, targetFiles: binding.candidate.targetFiles };
+}
+
+function gitBuffer(args) {
+  try {
+    return execFileSync('git', args, {
+      cwd: repoRoot, encoding: 'buffer', maxBuffer: 64 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    const detail = Buffer.isBuffer(error.stderr) ? error.stderr.toString('utf8').slice(0, 500) : '';
+    throw new Error('Git公開範囲の読み取りに失敗しました。' + detail);
+  }
+}
+
+function gitText(args) {
+  return gitBuffer(args).toString('utf8').trim();
+}
+
+async function assertFormalGitRepository() {
+  const formalRoot = await realpath(repoRoot);
+  const topLevel = await realpath(gitText(['rev-parse', '--show-toplevel']));
+  if (topLevel !== formalRoot) throw new Error('正式ブログのGit rootではありません。');
+  const gitMetadata = await lstat(path.join(formalRoot, '.git'));
+  if (!gitMetadata.isDirectory() || gitMetadata.isSymbolicLink()) {
+    throw new Error('Git worktreeや置換された.gitではなく正式checkoutを使用してください。');
+  }
+  if (gitText(['branch', '--show-current']) !== 'main') throw new Error('Git公開範囲の照合はmain上でのみ実行できます。');
+  const origin = gitText(['remote', 'get-url', 'origin']);
+  if (!['https://github.com/mizukioyama/blog.git', 'git@github.com:mizukioyama/blog.git'].includes(origin)) {
+    throw new Error('originが正式ブログRepositoryを指していません。');
+  }
+}
+
+function nulRecords(buffer, label) {
+  if (buffer.length === 0) return [];
+  if (buffer[buffer.length - 1] !== 0) throw new Error(label + ' のNUL区切り出力が不完全です。');
+  const values = [];
+  let start = 0;
+  for (let index = 0; index < buffer.length; index += 1) {
+    if (buffer[index] === 0) {
+      values.push(buffer.subarray(start, index));
+      start = index + 1;
+    }
+  }
+  return values;
+}
+
+function decodeGitPath(buffer) {
+  const value = buffer.toString('utf8');
+  if (!value || !Buffer.from(value, 'utf8').equals(buffer) || value.includes('\\') ||
+      value.includes(String.fromCharCode(0)) || value.startsWith('/') || path.posix.normalize(value) !== value ||
+      value.split('/').some((part) => !part || part === '.' || part === '..') ||
+      value.normalize('NFC') !== value) {
+    throw new Error('Gitが返したファイル名を安全な正規UTF-8パスとして扱えません。');
+  }
+  return value;
+}
+
+function parseGitNameStatus(buffer, label) {
+  const records = nulRecords(buffer, label);
+  const changes = [];
+  for (let index = 0; index < records.length;) {
+    const status = records[index++].toString('ascii');
+    if (!/^[A-Z](?:[0-9]{1,3})?$/.test(status)) throw new Error(label + ' の変更statusを解析できません。');
+    const count = status.startsWith('R') || status.startsWith('C') ? 2 : 1;
+    if (index + count > records.length) throw new Error(label + ' のrename/copyパスが不足しています。');
+    const paths = records.slice(index, index + count).map(decodeGitPath);
+    index += count;
+    changes.push({ status, paths });
+  }
+  return changes;
+}
+
+function parseGitIndexEntries(buffer) {
+  return nulRecords(buffer, 'git ls-files --stage').map((record) => {
+    const tab = record.indexOf(9);
+    if (tab < 0) throw new Error('Git index entryの区切りを解析できません。');
+    const metadata = record.subarray(0, tab).toString('ascii').split(' ');
+    if (metadata.length !== 3 || !/^(?:100644|100755|120000|160000)$/.test(metadata[0]) ||
+        !/^[a-f0-9]{40,64}$/i.test(metadata[1]) || !/^[0-3]$/.test(metadata[2])) {
+      throw new Error('Git index entryのmode・object・stageが不正です。');
+    }
+    return { mode: metadata[0], oid: metadata[1], stage: Number(metadata[2]), path: decodeGitPath(record.subarray(tab + 1)) };
+  });
+}
+
+function parseGitTreeEntries(buffer) {
+  return nulRecords(buffer, 'git ls-tree').map((record) => {
+    const tab = record.indexOf(9);
+    if (tab < 0) throw new Error('Git commit tree entryの区切りを解析できません。');
+    const metadata = record.subarray(0, tab).toString('ascii').split(' ');
+    if (metadata.length !== 3 || !/^(?:100644|100755|120000|160000)$/.test(metadata[0]) ||
+        !/^(?:blob|tree|commit)$/.test(metadata[1]) || !/^[a-f0-9]{40,64}$/i.test(metadata[2])) {
+      throw new Error('Git commit tree entryのmode・type・objectが不正です。');
+    }
+    return { mode: metadata[0], type: metadata[1], oid: metadata[2], path: decodeGitPath(record.subarray(tab + 1)) };
+  });
+}
+
+function deriveCandidateGitFiles(manifest) {
+  const candidate = manifest.candidate;
+  const expected = new Map();
+  const caseKeys = new Set();
+  for (const file of candidate.files) {
+    const relative = path.posix.join(candidate.targetDirectory, file.path);
+    const gitPath = 'src/content/blog/' + relative;
+    if (!safeRelativePath(gitPath) || gitPath.normalize('NFC') !== gitPath) {
+      throw new Error('公開候補から導出したGitパスが正規化されていません。');
+    }
+    const caseKey = gitPath.toLocaleLowerCase('en-US');
+    if (caseKeys.has(caseKey) || expected.has(gitPath)) throw new Error('公開候補に大小文字を区別しないパス重複があります。');
+    caseKeys.add(caseKey);
+    expected.set(gitPath, file);
+  }
+  const derivedTargetFiles = [...expected.keys()].map((item) => item.slice('src/content/blog/'.length)).sort();
+  if (!sameStringList(candidate.targetFiles, derivedTargetFiles)) {
+    throw new Error('候補allowlistがpayloadから導出したファイル一覧と一致しません。');
+  }
+  return expected;
+}
+
+function assertCandidateAddedChanges(changes, expected, phase) {
+  const expectedCaseKeys = new Map([...expected.keys()].map((item) => [item.toLocaleLowerCase('en-US'), item]));
+  const found = new Set();
+  for (const change of changes) {
+    if (change.paths.length !== 1) throw new Error(phase + ' にrename/copyが含まれています。');
+    const actual = change.paths[0];
+    const canonical = expectedCaseKeys.get(actual.toLocaleLowerCase('en-US'));
+    if (canonical && canonical !== actual) throw new Error(phase + ' のパス大小文字またはUnicode正規化が候補と異なります。');
+    if (!expected.has(actual)) throw new Error(phase + ' に候補allowlist外のファイルがあります: ' + actual);
+    if (found.has(actual)) throw new Error(phase + ' に同じパスが重複しています: ' + actual);
+    found.add(actual);
+    if (change.status !== 'A') throw new Error(phase + ' の変更種別が新規追加Aではありません: ' + change.status + ' ' + actual);
+  }
+  for (const expectedPath of expected.keys()) {
+    if (!found.has(expectedPath)) throw new Error(phase + ' から候補ファイルが欠落しています: ' + expectedPath);
+  }
+  if (changes.length !== expected.size) throw new Error(phase + ' の変更件数が候補ファイル数と一致しません。');
+}
+
+function verifyCandidateBlob(pathname, entry, expectedFile, phase) {
+  if (entry.mode !== '100644' || (entry.type && entry.type !== 'blob') || entry.stage !== undefined && entry.stage !== 0) {
+    throw new Error(phase + ' の候補ファイルが通常の非実行ファイルではありません: ' + pathname);
+  }
+  const bytes = gitBuffer(['cat-file', 'blob', entry.oid]);
+  if (bytes.length !== expectedFile.bytes || sha256(bytes) !== expectedFile.sha256) {
+    throw new Error(phase + ' の候補ファイルSHA-256が保存payloadと一致しません: ' + pathname);
+  }
+}
+
+async function verifyCandidateGitIndex(expected) {
+  const changes = parseGitNameStatus(
+    gitBuffer(['diff', '--cached', '--name-status', '-z', '--find-renames', '--no-ext-diff']),
+    'git diff --cached',
+  );
+  assertCandidateAddedChanges(changes, expected, 'Git index');
+  if (gitBuffer(['ls-files', '--unmerged', '-z']).length) throw new Error('Git indexに未解決merge entryがあります。');
+  const entries = parseGitIndexEntries(gitBuffer(['ls-files', '--stage', '-z']));
+  const summaries = [];
+  for (const [pathname, file] of expected) {
+    const matches = entries.filter((entry) => entry.path === pathname);
+    if (matches.length !== 1 || matches[0].stage !== 0) throw new Error('Git indexの候補pathが一意なstage 0 entryではありません: ' + pathname);
+    verifyCandidateBlob(pathname, matches[0], file, 'Git index');
+    summaries.push({ path: pathname, status: 'A', sha256: file.sha256, bytes: file.bytes, mode: matches[0].mode });
+  }
+  return summaries;
+}
+
+async function verifyCandidateCommit(expected) {
+  const head = gitText(['rev-parse', '--verify', 'HEAD']);
+  if (!validCommit.test(head)) throw new Error('HEADが検証可能なcommit SHAではありません。');
+  const parents = gitText(['rev-list', '--parents', '-n', '1', head]).split(/\s+/).filter(Boolean);
+  if (parents.length !== 2) throw new Error('公開commitは単一の親commitを持つ必要があります。');
+  const originMain = gitText(['rev-parse', '--verify', 'refs/remotes/origin/main']);
+  if (parents[1] !== originMain) throw new Error('公開commitの親が確認済みorigin/mainと一致しません。');
+  const changes = parseGitNameStatus(
+    gitBuffer(['diff-tree', '--no-commit-id', '--name-status', '-r', '-z', '--find-renames', parents[1], head]),
+    'commit diff-tree',
+  );
+  assertCandidateAddedChanges(changes, expected, 'commit tree');
+  const tree = parseGitTreeEntries(gitBuffer(['ls-tree', '-r', '-z', '--full-tree', head]));
+  const summaries = [];
+  for (const [pathname, file] of expected) {
+    const matches = tree.filter((entry) => entry.path === pathname);
+    if (matches.length !== 1) throw new Error('commit treeの候補pathが一意ではありません: ' + pathname);
+    verifyCandidateBlob(pathname, matches[0], file, 'commit tree');
+    summaries.push({ path: pathname, status: 'A', sha256: file.sha256, bytes: file.bytes, mode: matches[0].mode });
+  }
+  const remainingStaged = gitBuffer(['diff', '--cached', '--name-status', '-z', '--find-renames']);
+  if (parseGitNameStatus(remainingStaged, 'post-commit index').length) {
+    throw new Error('commit後に別のステージ済み変更が残っています。');
+  }
+  return { commitSha: head, parentSha: parents[1], originMainSha: originMain, files: summaries };
+}
+
+/**
+ * Read-only publication boundary check. CLI callers cannot provide a repository
+ * root or allowlist; paths and hashes are derived from the verified private plan.
+ */
+export async function verifyCandidateGitScope({
+  draftsDir = defaultDraftsDir, plansDir = defaultPlansDir, planId, candidateSha256: expected, phase,
+}) {
+  if (!['index', 'commit'].includes(phase)) throw new Error('Git照合phaseはindexまたはcommitを指定してください。');
+  if (!/^[a-f0-9]{64}$/.test(expected ?? '')) throw new Error('保存済み候補のSHA-256を指定してください。');
+  const { manifest } = await readAndVerifyPlan({ plansDir, planId });
+  if (manifest.candidate.candidateSha256 !== expected) throw new Error('指定candidate SHA-256がplanと一致しません。');
+  await verifyCandidateApproval({ draftsDir, plansDir, planId, candidateSha256: expected, action: 'stage' });
+  await verifyCandidateApproval({ draftsDir, plansDir, planId, candidateSha256: expected, action: 'commit' });
+  await assertFormalGitRepository();
+  const expectedFiles = deriveCandidateGitFiles(manifest);
+  if (phase === 'index') {
+    const files = await verifyCandidateGitIndex(expectedFiles);
+    return { planId, candidateSha256: expected, phase, readOnly: true, files };
+  }
+  const result = await verifyCandidateCommit(expectedFiles);
+  return { planId, candidateSha256: expected, phase, readOnly: true, ...result };
+}
+
 export async function isVerifiedApprovedPublicationPair({
   draftFile,
   publicFile,
@@ -796,6 +1299,9 @@ export async function materializePublication({
       throw new Error('公開先が既に存在し、内容が公開候補と異なります。既存記事は上書きしません。');
     }
   }
+  if (!targetInfo || markerPresent) {
+    await verifyCandidateApproval({ draftsDir, plansDir, planId, candidateSha256: candidate.candidateSha256, action: 'materialize' });
+  }
   if (dryRun) return { planId, candidateSha256: candidate.candidateSha256, targetDirectory: candidate.targetDirectory, targetFiles, dryRun: true, categoryDirectoryWouldBeCreated: !parentExists, alreadyMaterialized: false };
 
   const targetParent = parentExists ? await assertDirectory(targetParentBeforeWrite) : await ensureNormalChildDirectory(contentDir, categoryName);
@@ -989,6 +1495,38 @@ export async function runPublicationCommand(args = process.argv.slice(2)) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
+  if (command === 'record-approval') {
+    if (positional.length !== 1) throw new Error('公開候補IDを1つ指定してください。');
+    const actions = flags['authorized-actions']?.split(',').map((value) => value.trim()).filter(Boolean);
+    const result = await recordCandidateApproval({
+      draftsDir, plansDir, planId: positional[0], candidateSha256: flags['candidate-sha'],
+      kind: flags.kind, approvalReference: flags['approval-reference'], authorizedActions: actions,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    console.log('会話上の確認を追跡する記録です。暗号学的な本人認証ではありません。');
+    return;
+  }
+  if (command === 'check-approval') {
+    if (positional.length !== 1) throw new Error('公開候補IDを1つ指定してください。');
+    const result = await verifyCandidateApproval({
+      draftsDir, plansDir, planId: positional[0], candidateSha256: flags['candidate-sha'], action: flags.action,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (command === 'check-git-scope') {
+    if (positional.length !== 1) throw new Error('公開候補IDを1つ指定してください。');
+    if (Object.keys(flags).some((key) => !['candidate-sha', 'phase'].includes(key))) {
+      throw new Error('Git scope gateは候補からallowlistを導出します。任意のallowlist等は指定できません。');
+    }
+    const result = await verifyCandidateGitScope({
+      draftsDir, plansDir, planId: positional[0],
+      candidateSha256: flags['candidate-sha'], phase: flags.phase,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    console.log('読み取り専用照合です。Git index、commit、remoteは変更しません。');
+    return;
+  }
   if (command === 'verify') {
     if (positional.length !== 1) throw new Error('公開候補IDを1つ指定してください。');
     const result = await verifyLivePublication({
@@ -1001,6 +1539,9 @@ export async function runPublicationCommand(args = process.argv.slice(2)) {
   console.log([
     '記事公開候補コマンド',
     '  npm run article:publish:prepare -- <review-draft-id>',
+    '  npm run article:publish:record-approval -- <plan-id> --kind content|github-publication --candidate-sha <sha256> --approval-reference <reference>',
+    '  npm run article:publish:check-approval -- <plan-id> --candidate-sha <sha256> --action <action>',
+    '  npm run article:publish:check-git-scope -- <plan-id> --candidate-sha <sha256> --phase index|commit',
     '  npm run article:publish:materialize -- <plan-id> --candidate-sha <sha256> [--dry-run]',
     '  npm run article:publish:verify -- <plan-id> --commit-sha <sha> --workflow-sha <sha> --workflow-url <url> --build-status success --deploy-status success',
     '準備は非公開計画のみ作成します。Git・GitHub・公開の承認はCodexが会話上の本人承認を別に確認します。',

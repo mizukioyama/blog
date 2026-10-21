@@ -732,7 +732,7 @@ export async function runCommand(args = process.argv.slice(2)) {
     if (!slug || !workflowStatus) throw new Error('draft ID と Draft / Review / Approved の状態を指定してください。');
     const updated = await updateDraftStatus({ draftsDir, contentDir, slug, workflowStatus, confirmedByUser: flags.includes('--user-confirmed') });
     console.log('状態を更新しました: ' + updated.slug + ' → ' + updated.workflowStatus);
-    if (workflowStatus === 'Approved') console.log('これは記事内容の承認記録です。commit / push / 公開は実行していません。');
+    if (workflowStatus === 'Approved') console.log('状態変更のみです。会話上の承認証跡やGitHub公開許可を証明・保存しません。');
     return;
   }
 
