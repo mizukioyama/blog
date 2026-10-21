@@ -4,8 +4,10 @@ import { getCollection } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PostCard from '../components/PostCard.astro';
 import { categories } from '../lib/categories';
+import { getPublishedPostCounts } from '../lib/post-counts.mjs';
 
 const allPosts = await getCollection('blog');
+const publishedCounts = getPublishedPostCounts(allPosts, categories);
 const posts = allPosts
   .filter((post) => import.meta.env.DEV || !post.data.draft)
   .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
@@ -84,7 +86,7 @@ const formatDate = (date: Date) => new Intl.DateTimeFormat('ja-JP', { dateStyle:
     <section class="home-section home-latest page-width" aria-labelledby="latest-title">
       <div class="home-section__heading">
         <div><p class="eyebrow">LATEST NOTES</p><h2 id="latest-title">新しい記事</h2></div>
-        <span class="home-section__index">{posts.length}件</span>
+        <span class="home-section__index">新着表示 {latestPosts.length}件</span>
       </div>
       {latestPosts.length > 0 ? (
         <div class="post-grid">
@@ -100,11 +102,12 @@ const formatDate = (date: Date) => new Intl.DateTimeFormat('ja-JP', { dateStyle:
         <div><p class="eyebrow">CATEGORIES</p><h2 id="category-title">記録のテーマ</h2></div>
         <span class="home-section__note">作品から、展示へ。<br />ものづくりへ。</span>
       </div>
+      <p class="home-section__published-count">公開記事 全<strong>{publishedCounts.total}</strong>件</p>
       <div class="category-list">
         {categories.map((category, index) => (
           <a class="category-link" href={base + 'categories/' + category.slug + '/'}>
             <span class="category-link__number">0{index + 1}</span>
-            <span class="category-link__name"><strong>{category.name}</strong><small>{category.label}</small></span>
+            <span class="category-link__name"><strong>{category.name}</strong><small>{category.label}</small><small class="category-link__count">公開 {publishedCounts.categories[category.name]}件</small></span>
             <span class="category-link__description">{category.description}</span>
             <span class="category-link__arrow" aria-hidden="true">↗</span>
           </a>

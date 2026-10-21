@@ -890,3 +890,32 @@ html.mobile-menu-open {
 
   .mobile-menu__panel { scroll-behavior: auto; }
 }
+/* Small editorial counts for published posts, separate from development previews. */
+.home-section__published-count,
+.listing-header__count {
+  color: var(--muted);
+  font-size: var(--type-body-size);
+  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-section__published-count {
+  margin: -10px 0 0;
+}
+
+.home-section__published-count strong,
+.listing-header__count strong {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.category-link__count {
+  font-variant-numeric: tabular-nums;
+}
+
+.listing-header__count {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 .45em;
+  margin: 10px 0 0;
+}

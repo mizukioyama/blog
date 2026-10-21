@@ -3,6 +3,7 @@ import { getCollection } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PostCard from '../../components/PostCard.astro';
 import { categories, type BlogCategory } from '../../lib/categories';
+import { getPublishedPostCounts } from '../../lib/post-counts.mjs';
 
 export function getStaticPaths() {
   return categories.map((category) => ({ params: { category: category.slug }, props: { category } }));
@@ -11,6 +12,8 @@ export function getStaticPaths() {
 interface Props { category: BlogCategory; }
 const { category } = Astro.props;
 const allPosts = await getCollection('blog');
+const publishedCounts = getPublishedPostCounts(allPosts, categories);
+const categoryPublishedCount = publishedCounts.categories[category.name] ?? 0;
 const posts = allPosts.filter((post) => post.data.category === category.name && (import.meta.env.DEV || !post.data.draft)).sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
 const base = import.meta.env.BASE_URL;
 const canonical = new URL(base + 'categories/' + category.slug + '/', Astro.site ?? Astro.url).href;
@@ -20,6 +23,7 @@ const canonical = new URL(base + 'categories/' + category.slug + '/', Astro.site
     <a class="back-link" href={base}>← 記事一覧へ</a>
     <p class="eyebrow">CATEGORY / {category.name.toUpperCase()}</p>
     <h1>{category.label}</h1>
+    <p class="listing-header__count"><span>{category.name}</span><strong>{categoryPublishedCount}件</strong>の記事</p>
     <p>{category.description}</p>
   </section>
   <section class="listing-section page-width" aria-label={category.name + 'の記事'}>
