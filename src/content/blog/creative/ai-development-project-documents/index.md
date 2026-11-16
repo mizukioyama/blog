@@ -61,3 +61,10 @@ AIに会話の整理を頼むときは、先にこう伝えます。
 開発中に考えが変わったら、三つの文書をすべて書き直すのではなく、新しい決定が影響するファイルや見出しを先に確かめます。以前の判断と矛盾する箇所、変更せずに残す内容も整理してから、必要な部分だけを更新します。考えが変わること自体ではなく、変わった理由と以前の判断の扱いが残っていれば、やり直しではなく更新として続けられます。
 
 僕が先に整えたかったのはコードより判断でした。何をつくるのか、どう進めるのか、今は何をするのか。話した内容をこの三つに分けておくと、考えが変わったときも、前の判断をたどりながら更新できます。
+
+## 関連リンク
+
+- [AIならすぐ作れると思ったあと、アプリづくりで迷ったこと](https://mizukioyama.github.io/blog/posts/ai-app-development-lessons/)（このブログ）
+- [AIとの確認が増えすぎたとき、作業を止めないために](https://mizukioyama.github.io/blog/posts/ai-work-confirmation-boundaries/)（このブログ）
+- [AI記事制作で、下書きと公開の境界をつくる](https://mizukioyama.github.io/blog/posts/ai-article-draft-publication-workflow/)（このブログ）
+- [AIに画像を動かしてと頼んだら、横揺れだけになった](https://mizukioyama.github.io/blog/posts/ai-animation-prompt-five-conditions/)（このブログ）
