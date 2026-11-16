@@ -1,5 +1,6 @@
 ---
 title: "第1回グループ展「ゆらゆら」開催記録｜横浜・石川町"
+seoTitle: "第1回グループ展「ゆらゆら」開催記録｜企画の背景と準備、展示の記録"
 slug: yurayura-first-group-exhibition-report
 description: >-
   2026年10月に横浜・石川町で開催した第1回グループ展「ゆらゆら」の記録。企画の背景や展示内容に加え、初めて企画・設営に取り組んだ経験と、次回に向けた準備を紹介します。
@@ -49,9 +50,15 @@ ogImageAlt: "会場写真ではなく、淡いオリーブ色と青紫色の面�
 
 ## 今後の活動
 
-今回の経験を生かし、次回に向けて、ポストカードやプロフィールの用意、WebサイトやInstagramへつながるQRコード、ポスター、集客・告知など、今から準備できることに取り組んでいきたいと考えています。「ゆらゆら」は今後も全国各地で継続開催する方針です。次回の詳細は、決まり次第、公式サイトで案内します。
+今回の経験を生かし、次回に向けて、ポストカードやプロフィールの用意、WebサイトやInstagramへつながるQRコード、ポスター、集客・告知など、今から準備できることに取り組んでいきたいと考えています。「ゆらゆら」は今後も全国各地で継続開催する方針です。次回（第2回）は、2027年3月中旬に岩手県盛岡市のLife Art Gallery auswahiで開催する予定です。開催情報の詳細は、[ゆらゆら公式サイトのINFORMATION](https://mizukioyama.github.io/yurayura/information.html)で案内しています。
 
 ## 関連リンク
 
+- [「ゆらゆら」という名前にした理由](https://mizukioyama.github.io/blog/posts/why-yurayura-name/)（このブログ）
+- [展示したいのに、場所がない。僕が「ゆらゆら」を企画した理由](https://mizukioyama.github.io/blog/posts/from-exhibiting-to-organizing-a-group-show/)（このブログ）
+- [展示準備で、決めておくことと現場に残す余白](https://mizukioyama.github.io/blog/posts/yurayura-exhibition-planning-flexibility/)（このブログ）
+- [作品を増やす前に、見る人の余白を考える](https://mizukioyama.github.io/blog/posts/yurayura-exhibition-viewer-space/)（このブログ）
+- [黒と向き合う。「裏裏」と「表表」という2つの作品](https://mizukioyama.github.io/blog/posts/uraura-hyouhyou/)（このブログ）
 - [「ゆらゆら」公式サイト](https://mizukioyama.github.io/yurayura/)
+- [「ゆらゆら」公式サイト INFORMATION（次回の開催情報）](https://mizukioyama.github.io/yurayura/information.html)
 - [Mizuki Oyama ポートフォリオ](https://mizukioyama.github.io/website/)

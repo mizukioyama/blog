@@ -52,3 +52,9 @@ draft: false
 その違いを正解や不正解に分けたいとは思っていません。作品は僕がつくった時点で終わるのではなく、誰かが見たときに、もう一度その人の中で動き始めるものだと思っています。
 
 僕が抽象画で描いているのは、目に見えるものだけではありません。記憶や感情、自然の中で感じた空気、まだ言葉になっていないイメージ。そうしたものを線と色の関係に置き換えながら、自分でも知らなかった感覚を探しています。
+
+## 関連リンク
+
+- [作品タイトルは、なぜ最後に決めるのか](https://mizukioyama.github.io/blog/posts/abstract-painting-title-after/)（このブログ）
+- [抽象画を描くとき、どこで筆を置くか](https://mizukioyama.github.io/blog/posts/abstract-painting-when-to-stop/)（このブログ）
+- [黒と向き合う。「裏裏」と「表表」という2つの作品](https://mizukioyama.github.io/blog/posts/uraura-hyouhyou/)（このブログ）
