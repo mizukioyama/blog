@@ -47,3 +47,9 @@ draft: false
 作品が完成しても、「この絵はこういう意味です」とすべて説明できるわけではありません。自分でも、あとから作品を見て違うものを感じることがあります。見る人によって受け取り方が変わる部分も残っています。
 
 僕は、意味が全部決まったところを完成とは考えていません。色や形を見て、「ここから先は、無理に足さなくてもいい」と思えるところで、一度筆を置きます。描き続けられるけれど、描き続けない。その判断も、作品をつくることの一部だと思っています。
+
+## 関連リンク
+
+- [抽象画は、何を描いているの？｜感情や記憶を色と形にする](https://mizukioyama.github.io/blog/posts/abstract-painting-color-and-memory/)（このブログ）
+- [作品タイトルは、なぜ最後に決めるのか](https://mizukioyama.github.io/blog/posts/abstract-painting-title-after/)（このブログ）
+- [黒と向き合う。「裏裏」と「表表」という2つの作品](https://mizukioyama.github.io/blog/posts/uraura-hyouhyou/)（このブログ）

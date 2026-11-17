@@ -48,3 +48,9 @@ draft: false
 作品を発表するときに、制作の背景やタイトルの理由を書くことがあります。それは見方を一つに決めるためではありません。説明できることがある一方で、言葉にしないから残るものもあります。作品と見る人の間に、解釈が動ける場所を残しておきたい。
 
 僕にとってタイトルは、完成した絵に貼る名前ではなく、作品と見る人の間に置く最初の言葉です。方向は示す。でも、答えまでは決めない。
+
+## 関連リンク
+
+- [抽象画は、何を描いているの？｜感情や記憶を色と形にする](https://mizukioyama.github.io/blog/posts/abstract-painting-color-and-memory/)（このブログ）
+- [抽象画を描くとき、どこで筆を置くか](https://mizukioyama.github.io/blog/posts/abstract-painting-when-to-stop/)（このブログ）
+- [黒と向き合う。「裏裏」と「表表」という2つの作品](https://mizukioyama.github.io/blog/posts/uraura-hyouhyou/)（このブログ）

@@ -42,3 +42,10 @@ draft: false
 黒に向き合うことを考えるとき、この二つは一緒に紹介したい作品です。
 
 抽象画で感情や記憶を色や形に置き換えてきたことは、[抽象画は、何を描いているの？](https://mizukioyama.github.io/blog/posts/abstract-painting-color-and-memory/)にも書きました。
+
+## 関連リンク
+
+- [抽象画は、何を描いているの？｜感情や記憶を色と形にする](https://mizukioyama.github.io/blog/posts/abstract-painting-color-and-memory/)（このブログ）
+- [作品タイトルは、なぜ最後に決めるのか](https://mizukioyama.github.io/blog/posts/abstract-painting-title-after/)（このブログ）
+- [抽象画を描くとき、どこで筆を置くか](https://mizukioyama.github.io/blog/posts/abstract-painting-when-to-stop/)（このブログ）
+- [第1回グループ展「ゆらゆら」開催記録｜横浜・石川町](https://mizukioyama.github.io/blog/posts/yurayura-first-group-exhibition-report/)（このブログ）
