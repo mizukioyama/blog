@@ -3,7 +3,7 @@ title: 絵を描く僕は、AIに何を任せて何を自分で決めるのか
 seoTitle: 絵を描く僕がAIに任せること、自分で決めること
 slug: artist-and-ai-artistic-judgment
 description: AIは作品の意味を決める人ではなく、考えを整理する相手。抽象画を描く自分が、AIに言葉の案を頼みながら、表現と方向を自分で選ぶ考えをつづります。
-pubDate: '2026-10-21'
+pubDate: '2026-11-04'
 updatedDate: '2026-10-21'
 category: Art
 tags:

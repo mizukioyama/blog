@@ -4,7 +4,7 @@ seoTitle: 抽象画は何を描く？感情や記憶を色と形にする
 slug: abstract-painting-color-and-memory
 description: >-
   目の前のものをそのまま描くのではなく、心に残った感覚や記憶を線と色に置き換える。作品をつくっていなかった時期の経験や、画面と向き合いながら形を探す過程を振り返ります。
-pubDate: '2026-10-19'
+pubDate: '2026-09-14'
 updatedDate: '2026-10-19'
 category: Art
 tags:

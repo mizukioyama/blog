@@ -3,7 +3,7 @@ title: AIならすぐ作れると思ったあと、アプリづくりで迷っ�
 seoTitle: AIアプリ開発で迷ったこと｜目的・使いやすさ・機能選び
 slug: ai-app-development-lessons
 description: 作品制作や展示準備を支える自分用アプリをAIと考えた経験から、目的を言葉にする難しさ、動作と使いやすさの違い、機能を絞る判断を振り返ります。
-pubDate: '2026-10-21'
+pubDate: '2026-10-26'
 updatedDate: '2026-10-21'
 category: Creative
 tags:

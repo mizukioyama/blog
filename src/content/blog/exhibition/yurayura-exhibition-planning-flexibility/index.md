@@ -3,7 +3,7 @@ title: 展示準備で、決めておくことと現場に残す余白
 seoTitle: グループ展の準備記録｜決めることと現場に残す余白
 slug: yurayura-exhibition-planning-flexibility
 description: グループ展「ゆらゆら」の開催前、搬入日から準備を逆算し、作品情報や見せ方を確認しながら、実物を見て調整できる余地を残した記録です。
-pubDate: '2026-10-21'
+pubDate: '2026-11-20'
 updatedDate: '2026-10-21'
 category: Exhibition
 tags:

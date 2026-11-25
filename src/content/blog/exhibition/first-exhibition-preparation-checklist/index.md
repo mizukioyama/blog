@@ -4,7 +4,7 @@ seoTitle: 初めてのグループ展参加｜作品・展示方法・費用の�
 slug: first-exhibition-preparation-checklist
 description: >-
   初めてグループ展に参加するときは、作品数やサイズ、展示方法、費用、締切を事前に確認すると準備を進めやすくなります。開催ごとの条件を見落とさないための確認点をまとめます。
-pubDate: '2026-10-19'
+pubDate: '2026-09-29'
 updatedDate: '2026-10-19'
 category: Exhibition
 tags:

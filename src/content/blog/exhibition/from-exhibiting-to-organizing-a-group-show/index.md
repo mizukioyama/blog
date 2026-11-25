@@ -3,7 +3,7 @@ title: 展示したいのに、場所がない。僕が「ゆらゆら」を企�
 seoTitle: 展示したいのに場所がない｜グループ展「ゆらゆら」を企画した理由
 slug: from-exhibiting-to-organizing-a-group-show
 description: 地元で展示場所が見つからず活動する場所を広げた経験と、東京・大阪・日光・フランス・台湾での展示を経て「ゆらゆら」を企画する側へ移った背景を振り返ります。
-pubDate: '2026-10-19'
+pubDate: '2026-10-02'
 updatedDate: '2026-10-19'
 category: Exhibition
 tags:

@@ -4,7 +4,7 @@ seoTitle: "第1回グループ展「ゆらゆら」開催記録｜企画の背�
 slug: yurayura-first-group-exhibition-report
 description: >-
   2026年10月に横浜・石川町で開催した第1回グループ展「ゆらゆら」の記録。企画の背景や展示内容に加え、初めて企画・設営に取り組んだ経験と、次回に向けた準備を紹介します。
-pubDate: 2026-10-18
+pubDate: 2026-10-13
 category: Exhibition
 tags:
   - ゆらゆら

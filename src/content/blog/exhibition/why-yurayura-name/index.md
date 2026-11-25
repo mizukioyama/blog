@@ -3,7 +3,7 @@ title: 「ゆらゆら」という名前にした理由
 seoTitle: 「ゆらゆら」という名前にした理由｜作品の余韻
 slug: why-yurayura-name
 description: グループ展「ゆらゆら」の名前は、作品を見たりつくったりする中で生まれる小さな心の揺れから決まりました。展示名に込めた個人的なきっかけを紹介します。
-pubDate: '2026-10-21'
+pubDate: '2026-11-12'
 updatedDate: '2026-10-21'
 category: Exhibition
 tags:

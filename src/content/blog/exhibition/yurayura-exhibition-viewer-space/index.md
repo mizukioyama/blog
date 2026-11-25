@@ -3,7 +3,7 @@ title: 作品を増やす前に、見る人の余白を考える
 seoTitle: 作品を増やす前に考える、展示空間と見る人の余白
 slug: yurayura-exhibition-viewer-space
 description: 作品の数や見る順番だけでなく、立ち止まる幅、作品間の距離、置かない壁も展示体験の一部と考える。開催前に展示空間について考えていたことを記録します。
-pubDate: '2026-10-21'
+pubDate: '2026-11-22'
 updatedDate: '2026-10-21'
 category: Exhibition
 tags:

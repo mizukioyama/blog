@@ -3,7 +3,7 @@ title: AIと決めたことが会話に埋もれる。僕が3つの文書に分�
 seoTitle: AI開発で決めたことが会話に埋もれる。3つの文書に残す理由
 slug: ai-development-project-documents
 description: アプリの方向性を話し合ううち、決めたことが会話の奥へ埋もれた経験から、仕様書・開発ルール・ロードマップに分けて残す理由を紹介します。
-pubDate: '2026-10-20'
+pubDate: '2026-10-15'
 updatedDate: '2026-10-20'
 category: Creative
 tags:

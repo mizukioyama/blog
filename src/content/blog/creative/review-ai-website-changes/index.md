@@ -3,7 +3,7 @@ title: AIにWebサイトの修正を頼む前に、範囲を決めて確かめ�
 seoTitle: AIにWebサイト修正を頼む前に決めたい変更範囲
 slug: review-ai-website-changes
 description: Webサイトのアニメーションを直した後にレイアウトが崩れた経験から、変更範囲を決め、修正を一つずつ試し、ブラウザーで確かめるまでを紹介します。
-pubDate: '2026-10-20'
+pubDate: '2026-10-24'
 updatedDate: '2026-10-20'
 category: Creative
 tags:

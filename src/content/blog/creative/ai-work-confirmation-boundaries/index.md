@@ -3,7 +3,7 @@ title: AIとの確認が増えすぎたとき、作業を止めないために
 seoTitle: AIとの確認が増えすぎたとき、作業を止めない考え方
 slug: ai-work-confirmation-boundaries
 description: AIとの作業で確認ばかり増えた経験から、やり直せる下書きと慎重に扱う公開操作を分ける考えをまとめます。作業を止めずに判断を残すための記録です。
-pubDate: '2026-10-21'
+pubDate: '2026-11-01'
 updatedDate: '2026-10-21'
 category: Creative
 tags:

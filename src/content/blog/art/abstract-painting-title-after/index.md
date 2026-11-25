@@ -4,7 +4,7 @@ seoTitle: 抽象画のタイトルはなぜ最後に決める？「想蒼」と�
 slug: abstract-painting-title-after
 description: >-
   抽象画のタイトルを描き終えてから考える理由を、「想蒼」と「無題」の例とともに振り返ります。作品を一つの意味に固定せず、見る人が画面に入る手がかりとして言葉を置く考えを紹介します。
-pubDate: '2026-10-19'
+pubDate: '2026-09-20'
 updatedDate: '2026-10-19'
 category: Art
 tags:

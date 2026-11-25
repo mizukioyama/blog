@@ -3,7 +3,7 @@ title: 抽象画を描くとき、どこで筆を置くか
 seoTitle: 抽象画を描くとき、どこで筆を置くか｜制作中の判断
 slug: abstract-painting-when-to-stop
 description: 抽象画を描き続けられるとき、どこで筆を置くのか。近くと離れて画面を見返し、色を足すことと残すことを確かめながら、完成を判断するまでを振り返ります。
-pubDate: '2026-10-19'
+pubDate: '2026-09-23'
 updatedDate: '2026-10-19'
 category: Art
 tags:

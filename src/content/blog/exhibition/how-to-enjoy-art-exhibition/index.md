@@ -3,7 +3,7 @@ title: 美術展で何を見る？作品と自分のペースで出会う
 seoTitle: 美術展で何を見る？作品を自分のペースで楽しむ方法
 slug: how-to-enjoy-art-exhibition
 description: 作品を画面で見るときと会場で見るときの違い、近づく・離れる・戻るという鑑賞を紹介します。感想を急いで決めず、自分のペースで作品と向き合うための視点です。
-pubDate: '2026-10-19'
+pubDate: '2026-10-05'
 updatedDate: '2026-10-19'
 category: Exhibition
 tags:

@@ -4,7 +4,7 @@ seoTitle: AI記事制作で、下書きと公開の境界をつくる｜Mizuki O
 slug: ai-article-draft-publication-workflow
 description: >-
   AIに記事制作を手伝ってもらうとき、下書き、Review、公開候補、本人承認をどう分けるか。独自ブログの実装を例に、内容確認と公開判断を手元に残す仕組みを紹介します。
-pubDate: '2026-10-19'
+pubDate: '2026-09-24'
 updatedDate: '2026-10-19'
 category: Creative
 tags:

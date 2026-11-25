@@ -3,7 +3,7 @@ title: 作品づくりの道具は、使う時間と端末から考える
 seoTitle: 作品づくりの道具は使う時間から｜スマホとPCの役割
 slug: creative-tool-for-art-workflow
 description: 作品制作や展示準備を支える自分用ツールを考えたとき、スマートフォンとPCをどう使い分けるか。機能より先に、道具を開く場面を考えた当時の設計を振り返ります。
-pubDate: '2026-10-21'
+pubDate: '2026-11-06'
 updatedDate: '2026-10-21'
 category: Creative
 tags:

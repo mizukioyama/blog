@@ -3,7 +3,7 @@ title: 黒と向き合う。「裏裏」と「表表」という2つの作品
 seoTitle: 「裏裏」と「表表」｜黒と向き合った2つの作品
 slug: uraura-hyouhyou
 description: 同じ時期に制作した対作品「裏裏」と「表表」。黒を下地に使っていたことと、自分の内側に向き合ったときの考えを、本人が振り返る言葉から紹介します。
-pubDate: '2026-10-21'
+pubDate: '2026-11-09'
 updatedDate: '2026-10-21'
 category: Art
 tags:

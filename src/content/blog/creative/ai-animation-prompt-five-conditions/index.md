@@ -3,7 +3,7 @@ title: AIに画像を動かしてと頼んだら、横揺れだけになった
 seoTitle: AI画像アニメーションが横揺れだけに。指示を見直した過程
 slug: ai-animation-prompt-five-conditions
 description: キャラクター全体が横揺れした経験と、抽象的な形が急に切り替わった試行錯誤をもとに、動かす部分・残す形・動きの順序・確認用の試作を紹介します。
-pubDate: '2026-10-20'
+pubDate: '2026-10-09'
 updatedDate: '2026-10-20'
 category: Creative
 tags:

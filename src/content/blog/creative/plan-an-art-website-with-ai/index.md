@@ -3,7 +3,7 @@ title: 作品サイトをAIとつくる前に、目的と導線を考える
 seoTitle: 作品サイトをAIとつくる前に考えた目的とページの順番
 slug: plan-an-art-website-with-ai
 description: 作品サイトと「ゆらゆら」の展示サイトを考えた経験から、見る人・伝える内容・ページの順番を整理し、AIへ任せる範囲を決めた過程を紹介します。
-pubDate: '2026-10-20'
+pubDate: '2026-10-22'
 updatedDate: '2026-10-20'
 category: Creative
 tags:
